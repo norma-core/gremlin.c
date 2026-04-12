@@ -1,0 +1,4 @@
+build/
+.wp-cache/
+.claude/
+.cache/
