@@ -667,7 +667,7 @@ TEST(integration_test_edition)
 TEST(integration_test_golden_proto3)
 {
     char path[1024];
-    snprintf(path, sizeof(path), "%s/google/proto3.proto", TEST_DATA_DIR);
+    snprintf(path, sizeof(path), "%s/proto/proto3.proto", TEST_DATA_DIR);
     char *content = read_file(path);
     ASSERT_NOT_NULL(content);
 

@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_SERVICE[] = "service";
-/*@ axiomatic Kw_service_nonempty { axiom kw_service_nonempty: KW_SERVICE[0] == 's'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset;
@@ -23,7 +22,7 @@ gremlinp_service_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_SERVICE)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_SERVICE, sizeof(KW_SERVICE) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }
@@ -48,15 +47,21 @@ gremlinp_service_parse(struct gremlinp_parser_buffer *buf)
         return result;
     }
 
-    // Skip body — count braces, handle strings
-    int depth = 1;
-    /*@ loop invariant depth >= 0;
-        loop invariant buf->offset >= start;
+    // Skip body — count braces, handle strings. depth is size_t to avoid
+    // signed-overflow concerns; the loop invariant ties it to the number
+    // of bytes consumed so it is also bounded.
+    size_t depth = 1;
+    /*@ loop invariant buf->offset >= start;
         loop invariant buf->offset <= buf->buf_size;
+        loop invariant depth <= buf->offset - start + 1;
+        loop invariant depth == 0 ==>
+                       buf->offset > start && buf->buf[buf->offset - 1] == '}';
         loop assigns buf->offset, depth;
         loop variant buf->buf_size - buf->offset;
     */
     while (depth > 0) {
+        size_t iter_start = buf->offset;
+        (void)iter_start;
         char c = gremlinp_parser_buffer_char(buf);
         if (c == '\0') {
             buf->offset = start;
@@ -64,10 +69,11 @@ gremlinp_service_parse(struct gremlinp_parser_buffer *buf)
             return result;
         }
         buf->offset++;
+        /*@ assert buf->offset == iter_start + 1; */
         if (c == '{') depth++;
         else if (c == '}') depth--;
         else if (c == '"' || c == '\'') {
-            /*@ loop invariant buf->offset >= start;
+            /*@ loop invariant buf->offset >= iter_start + 1;
                 loop invariant buf->offset <= buf->buf_size;
                 loop assigns buf->offset;
                 loop variant buf->buf_size - buf->offset;
@@ -86,6 +92,7 @@ gremlinp_service_parse(struct gremlinp_parser_buffer *buf)
                 }
             }
         }
+        /*@ assert buf->offset > iter_start; */
     }
 
     result.start = start;

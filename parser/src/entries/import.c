@@ -4,9 +4,6 @@
 static const char KW_IMPORT[] = "import";
 static const char KW_WEAK[]   = "weak";
 static const char KW_PUBLIC[] = "public";
-/*@ axiomatic Kw_import_nonempty { axiom kw_import_nonempty: KW_IMPORT[0] == 'i'; } */
-/*@ axiomatic Kw_weak_nonempty { axiom kw_weak_nonempty: KW_WEAK[0]   == 'w'; } */
-/*@ axiomatic Kw_public_nonempty { axiom kw_public_nonempty: KW_PUBLIC[0]  == 'p'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset;
@@ -31,7 +28,7 @@ gremlinp_import_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_IMPORT)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_IMPORT, sizeof(KW_IMPORT) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }
@@ -39,11 +36,11 @@ gremlinp_import_parse(struct gremlinp_parser_buffer *buf)
     enum gremlinp_parsing_error err = gremlinp_parser_buffer_skip_spaces(buf);
     if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
 
-    if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_WEAK)) {
+    if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_WEAK, sizeof(KW_WEAK) - 1)) {
         result.type = GREMLINP_IMPORT_TYPE_WEAK;
         err = gremlinp_parser_buffer_skip_spaces(buf);
         if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
-    } else if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_PUBLIC)) {
+    } else if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_PUBLIC, sizeof(KW_PUBLIC) - 1)) {
         result.type = GREMLINP_IMPORT_TYPE_PUBLIC;
         err = gremlinp_parser_buffer_skip_spaces(buf);
         if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
@@ -53,6 +50,12 @@ gremlinp_import_parse(struct gremlinp_parser_buffer *buf)
     if (path.error != GREMLINP_OK) {
         buf->offset = start;
         result.error = path.error;
+        return result;
+    }
+
+    if (path.length == 0) {
+        buf->offset = start;
+        result.error = GREMLINP_ERROR_IMPORT_PATH_INVALID;
         return result;
     }
 

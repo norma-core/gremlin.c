@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_EDITION[] = "edition";
-/*@ axiomatic Kw_edition_nonempty { axiom kw_edition_nonempty: KW_EDITION[0] == 'e'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset;
@@ -24,7 +23,7 @@ gremlinp_edition_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_EDITION)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_EDITION, sizeof(KW_EDITION) - 1)) {
         result.error = GREMLINP_ERROR_INVALID_SYNTAX_DEF;
         return result;
     }
@@ -45,6 +44,12 @@ gremlinp_edition_parse(struct gremlinp_parser_buffer *buf)
     if (edition_val.error != GREMLINP_OK) {
         buf->offset = start;
         result.error = edition_val.error;
+        return result;
+    }
+
+    if (edition_val.length == 0) {
+        buf->offset = start;
+        result.error = GREMLINP_ERROR_INVALID_SYNTAX_DEF;
         return result;
     }
 

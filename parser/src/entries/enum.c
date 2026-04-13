@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_ENUM[] = "enum";
-/*@ axiomatic Kw_enum_nonempty { axiom kw_enum_nonempty: KW_ENUM[0] == 'e'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -24,7 +23,7 @@ gremlinp_enum_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_ENUM)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_ENUM, sizeof(KW_ENUM) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }

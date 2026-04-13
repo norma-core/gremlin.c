@@ -22,8 +22,8 @@
  */
 
 void					gremlinp_parser_buffer_init(struct gremlinp_parser_buffer *pb, char *buf, size_t offset);
-bool					gremlinp_parser_buffer_check_str_and_shift(struct gremlinp_parser_buffer *pb, const char *prefix);
-bool					gremlinp_parser_buffer_check_str_with_space_and_shift(struct gremlinp_parser_buffer *pb, const char *prefix);
+bool					gremlinp_parser_buffer_check_str_and_shift(struct gremlinp_parser_buffer *pb, const char *prefix, size_t prefix_len);
+bool					gremlinp_parser_buffer_check_str_with_space_and_shift(struct gremlinp_parser_buffer *pb, const char *prefix, size_t prefix_len);
 enum gremlinp_parsing_error		gremlinp_parser_buffer_skip_spaces(struct gremlinp_parser_buffer *pb);
 bool					gremlinp_parser_buffer_check_and_shift(struct gremlinp_parser_buffer *pb, char expected);
 char					gremlinp_parser_buffer_char(const struct gremlinp_parser_buffer *pb);

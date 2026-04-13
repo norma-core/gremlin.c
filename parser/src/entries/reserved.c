@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_RESERVED[] = "reserved";
-/*@ axiomatic Kw_reserved_nonempty { axiom kw_reserved_nonempty: KW_RESERVED[0] == 'r'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -26,7 +25,7 @@ gremlinp_reserved_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_RESERVED)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_RESERVED, sizeof(KW_RESERVED) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }
@@ -41,13 +40,30 @@ gremlinp_reserved_parse(struct gremlinp_parser_buffer *buf)
 
     if (is_names) {
         result.kind = GREMLINP_RESERVED_NAMES;
+
+        // First item (unrolled so the loop invariant can say count >= 1).
+        struct gremlinp_span_parse_result first_name =
+            gremlinp_lexems_parse_string_literal(buf);
+        if (first_name.error != GREMLINP_OK) {
+            buf->offset = start;
+            result.error = first_name.error;
+            return result;
+        }
+        count = 1;
+
+        err = gremlinp_parser_buffer_skip_spaces(buf);
+        if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
+
         /*@ loop invariant buf->offset > start;
             loop invariant buf->offset <= buf->buf_size;
-            loop invariant count >= 0;
+            loop invariant 1 <= count <= buf->offset - start;
             loop assigns buf->offset, count, err;
             loop variant buf->buf_size - buf->offset;
         */
-        while (true) {
+        while (gremlinp_parser_buffer_check_and_shift(buf, ',')) {
+            err = gremlinp_parser_buffer_skip_spaces(buf);
+            if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
+
             struct gremlinp_span_parse_result name = gremlinp_lexems_parse_string_literal(buf);
             if (name.error != GREMLINP_OK) {
                 buf->offset = start;
@@ -58,23 +74,31 @@ gremlinp_reserved_parse(struct gremlinp_parser_buffer *buf)
 
             err = gremlinp_parser_buffer_skip_spaces(buf);
             if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
-
-            if (!gremlinp_parser_buffer_check_and_shift(buf, ',')) {
-                break;
-            }
-
-            err = gremlinp_parser_buffer_skip_spaces(buf);
-            if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
         }
     } else {
         result.kind = GREMLINP_RESERVED_RANGES;
+
+        struct gremlinp_range_parse_result first_range = gremlinp_lexems_parse_range(buf);
+        if (first_range.error != GREMLINP_OK) {
+            buf->offset = start;
+            result.error = first_range.error;
+            return result;
+        }
+        count = 1;
+
+        err = gremlinp_parser_buffer_skip_spaces(buf);
+        if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
+
         /*@ loop invariant buf->offset > start;
             loop invariant buf->offset <= buf->buf_size;
-            loop invariant count >= 0;
+            loop invariant 1 <= count <= buf->offset - start;
             loop assigns buf->offset, count, errno, err;
             loop variant buf->buf_size - buf->offset;
         */
-        while (true) {
+        while (gremlinp_parser_buffer_check_and_shift(buf, ',')) {
+            err = gremlinp_parser_buffer_skip_spaces(buf);
+            if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
+
             struct gremlinp_range_parse_result range = gremlinp_lexems_parse_range(buf);
             if (range.error != GREMLINP_OK) {
                 buf->offset = start;
@@ -82,13 +106,6 @@ gremlinp_reserved_parse(struct gremlinp_parser_buffer *buf)
                 return result;
             }
             count++;
-
-            err = gremlinp_parser_buffer_skip_spaces(buf);
-            if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
-
-            if (!gremlinp_parser_buffer_check_and_shift(buf, ',')) {
-                break;
-            }
 
             err = gremlinp_parser_buffer_skip_spaces(buf);
             if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }

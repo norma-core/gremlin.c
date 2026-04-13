@@ -5,10 +5,6 @@ static const char KW_GROUP[]    = "group";
 static const char KW_OPTIONAL[] = "optional";
 static const char KW_REQUIRED[] = "required";
 static const char KW_REPEATED[] = "repeated";
-/*@ axiomatic Kw_group_nonempty { axiom kw_group_nonempty: KW_GROUP[0]    == 'g'; } */
-/*@ axiomatic Kw_optional_nonempty { axiom kw_optional_nonempty: KW_OPTIONAL[0] == 'o'; } */
-/*@ axiomatic Kw_required_nonempty { axiom kw_required_nonempty: KW_REQUIRED[0] == 'r'; } */
-/*@ axiomatic Kw_repeated_nonempty { axiom kw_repeated_nonempty: KW_REPEATED[0] == 'r'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -30,14 +26,14 @@ gremlinp_group_parse(struct gremlinp_parser_buffer *buf)
     size_t start = buf->offset;
 
     // Optional label
-    gremlinp_parser_buffer_check_str_and_shift(buf, KW_OPTIONAL);
-    gremlinp_parser_buffer_check_str_and_shift(buf, KW_REQUIRED);
-    gremlinp_parser_buffer_check_str_and_shift(buf, KW_REPEATED);
+    gremlinp_parser_buffer_check_str_and_shift(buf, KW_OPTIONAL, sizeof(KW_OPTIONAL) - 1);
+    gremlinp_parser_buffer_check_str_and_shift(buf, KW_REQUIRED, sizeof(KW_REQUIRED) - 1);
+    gremlinp_parser_buffer_check_str_and_shift(buf, KW_REPEATED, sizeof(KW_REPEATED) - 1);
 
     enum gremlinp_parsing_error err = gremlinp_parser_buffer_skip_spaces(buf);
     if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_GROUP)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_GROUP, sizeof(KW_GROUP) - 1)) {
         buf->offset = start;
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
@@ -83,15 +79,19 @@ gremlinp_group_parse(struct gremlinp_parser_buffer *buf)
         return result;
     }
 
-    // Skip body
-    int depth = 1;
-    /*@ loop invariant depth >= 0;
-        loop invariant buf->offset >= start;
+    // Skip body. depth is size_t to avoid signed-overflow concerns.
+    size_t depth = 1;
+    /*@ loop invariant buf->offset >= start;
         loop invariant buf->offset <= buf->buf_size;
+        loop invariant depth <= buf->offset - start + 1;
+        loop invariant depth == 0 ==>
+                       buf->offset > start && buf->buf[buf->offset - 1] == '}';
         loop assigns buf->offset, depth;
         loop variant buf->buf_size - buf->offset;
     */
     while (depth > 0) {
+        size_t iter_start = buf->offset;
+        (void)iter_start;
         char c = gremlinp_parser_buffer_char(buf);
         if (c == '\0') {
             buf->offset = start;
@@ -99,10 +99,11 @@ gremlinp_group_parse(struct gremlinp_parser_buffer *buf)
             return result;
         }
         buf->offset++;
+        /*@ assert buf->offset == iter_start + 1; */
         if (c == '{') depth++;
         else if (c == '}') depth--;
         else if (c == '"' || c == '\'') {
-            /*@ loop invariant buf->offset >= start;
+            /*@ loop invariant buf->offset >= iter_start + 1;
                 loop invariant buf->offset <= buf->buf_size;
                 loop assigns buf->offset;
                 loop variant buf->buf_size - buf->offset;
@@ -121,6 +122,7 @@ gremlinp_group_parse(struct gremlinp_parser_buffer *buf)
                 }
             }
         }
+        /*@ assert buf->offset > iter_start; */
     }
 
     result.start = start;

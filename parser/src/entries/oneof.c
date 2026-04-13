@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_ONEOF[] = "oneof";
-/*@ axiomatic Kw_oneof_nonempty { axiom kw_oneof_nonempty: KW_ONEOF[0] == 'o'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -183,7 +182,7 @@ gremlinp_oneof_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_ONEOF)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_ONEOF, sizeof(KW_ONEOF) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }

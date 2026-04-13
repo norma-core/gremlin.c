@@ -2,8 +2,11 @@ cmake_minimum_required(VERSION 3.10)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" GREMLINP_VERSION_FILE)
 string(STRIP "${GREMLINP_VERSION_FILE}" GREMLINP_VERSION)
+# project(VERSION ...) requires a bare numeric form (X.Y.Z) — strip any
+# pre-release suffix like "-dev" before passing it.
+string(REGEX REPLACE "[-+].*$" "" GREMLINP_VERSION_NUMERIC "${GREMLINP_VERSION}")
 
-project(gremlinp VERSION ${GREMLINP_VERSION} LANGUAGES C)
+project(gremlinp VERSION ${GREMLINP_VERSION_NUMERIC} LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -28,6 +31,7 @@ set(PARSER_SOURCES
     src/entries/option.c
     src/entries/options.c
     src/entries/package.c
+    src/entries/std.c
     src/entries/proto_file.c
     src/entries/reserved.c
     src/entries/service.c
@@ -55,7 +59,7 @@ set(TEST_SOURCES
 
 add_executable(parser_tests ${TEST_SOURCES})
 target_link_libraries(parser_tests gremlinp)
-get_filename_component(TEST_DATA_DIR ../test_data ABSOLUTE)
+get_filename_component(TEST_DATA_DIR tests ABSOLUTE)
 target_compile_definitions(parser_tests PRIVATE "TEST_DATA_DIR=\"${TEST_DATA_DIR}\"")
 add_test(NAME parser_tests COMMAND parser_tests)
 
@@ -70,11 +74,13 @@ if(FRAMAC)
 
     set(WP_CACHE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/.wp-cache)
     set(WP_BASE_FLAGS
-        -wp -wp-rte -wp-timeout 30
+        -wp -wp-rte -wp-timeout 60
         -wp-prover z3,alt-ergo
         -wp-par ${NPROC}
         -wp-cache update
         -wp-cache-dir ${WP_CACHE_DIR}
+        -wp-smoke-tests
+        -wp-msg-key shell
         -kernel-warn-key annot:missing-spec=inactive
         -wp-warn-key pedantic-assigns=inactive
         -wp-no-warn-memory-model

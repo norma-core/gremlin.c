@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_MESSAGE[] = "message";
-/*@ axiomatic Kw_message_nonempty { axiom kw_message_nonempty: KW_MESSAGE[0] == 'm'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -24,7 +23,7 @@ gremlinp_message_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_MESSAGE)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_MESSAGE, sizeof(KW_MESSAGE) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }
@@ -50,12 +49,16 @@ gremlinp_message_parse(struct gremlinp_parser_buffer *buf)
 
     size_t body_start = buf->offset;
 
-    // Flat loop: depth tracks nesting of message/enum/oneof/extend/group blocks
-    int depth = 1;
+    // Flat loop: depth tracks nesting of message/enum/oneof/extend/group blocks.
+    // depth is size_t to avoid signed-overflow concerns; bounded by the bytes
+    // consumed since body_start (each '{' that increments depth costs >= 1 byte).
+    size_t depth = 1;
 
-    /*@ loop invariant depth >= 1;
-        loop invariant buf->offset >= body_start;
+    /*@ loop invariant buf->offset >= body_start;
         loop invariant buf->offset <= buf->buf_size;
+        loop invariant depth <= buf->offset - body_start + 1;
+        loop invariant depth == 0 ==>
+                       buf->offset > body_start && buf->buf[buf->offset - 1] == '}';
         loop assigns buf->offset, errno, err, depth;
         loop variant buf->buf_size - buf->offset;
     */
@@ -91,7 +94,7 @@ gremlinp_message_parse(struct gremlinp_parser_buffer *buf)
 
         // Try nested message header: message Name {
         size_t msg_save = buf->offset;
-        if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_MESSAGE)) {
+        if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_MESSAGE, sizeof(KW_MESSAGE) - 1)) {
             err = gremlinp_parser_buffer_skip_spaces(buf);
             if (err == GREMLINP_OK) {
                 struct gremlinp_span_parse_result mname = gremlinp_lexems_parse_identifier(buf);

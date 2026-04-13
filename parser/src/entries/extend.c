@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_EXTEND[] = "extend";
-/*@ axiomatic Kw_extend_nonempty { axiom kw_extend_nonempty: KW_EXTEND[0] == 'e'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -25,7 +24,7 @@ gremlinp_extend_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_EXTEND)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_EXTEND, sizeof(KW_EXTEND) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }

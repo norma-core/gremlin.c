@@ -103,7 +103,7 @@ void parse_proto(char *proto_src) {
 
 ### 🧪 A full worked example
 
-`tests/integration_test.c` walks `test_data/google/proto3.proto` end-to-end
+`tests/integration_test.c` walks `tests/proto/proto3.proto` end-to-end
 with the iterator API and asserts every field name, index, label, option,
 oneof variant, map key/value type, nested message and nested enum. It is the
 canonical example of how to use the library from start to finish.
@@ -126,17 +126,24 @@ Artifacts:
 
 ### 📊 Current status
 
-**All 5878 proof obligations pass ✅** in three groups:
+**All 7486 proof obligations pass ✅, plus 1486 smoke tests (no dead code, no
+contradictory contracts) in three groups:**
 
-| Group             | Proved    | Timeouts | Unreachable* | Notes                               |
-| ----------------- | --------- | -------- | ------------ | ----------------------------------- |
-| 🧮 `verify-buffer` | 329/329   | 0        | 7            | Buffer primitives                   |
-| 🔤 `verify-lexems` | 1407/1407 | 0        | 7            | Lexers, identifier, literal parsers |
-| 🌲 `verify-syntax` | 4142/4142 | 0        | 12           | All entry parsers                   |
+| Group              | Proved      | Smoke       | Wall (fresh)¹ | Notes                               |
+| ------------------ | ----------- | ----------- | ------------- | ----------------------------------- |
+| 🧮 `verify-buffer`  | 409 / 409   | 80 / 80     | 0m30s         | Buffer primitives                   |
+| 🔤 `verify-lexems`  | 1787 / 1787 | 377 / 377   | 4m02s         | Lexers, identifier, literal parsers |
+| 🌲 `verify-syntax`  | 5290 / 5290 | 1029 / 1029 | 17m52s        | All entry parsers                   |
+| **`make verify`**  | **7486 / 7486** | **1486 / 1486** | **22m12s**    | All three groups in parallel        |
 
-*"Unreachable" counts are expected — they come from paths WP proves cannot be
-taken (e.g. branches inside functions that Qed shows are dead). They do not
-indicate failed proofs.
+¹ Wall-clock with a cold `.wp-cache`. With cache, subsequent runs only re-prove
+changed goals and finish in seconds. Measured with `-wp-par 4` on a developer
+laptop.
+
+**Smoke tests are mandatory.** Frama-C's `-wp-smoke-tests` is wired into
+`WP_BASE_FLAGS` and detects unreachable code, contradictory contracts, and
+poisoned axiomatic models. Any new contract that introduces dead code in an
+unrelated function fails the build immediately.
 
 ⚡ Subsequent runs only re-prove changed goals thanks to `-wp-cache update`.
 
@@ -161,24 +168,19 @@ For every parser function, WP proves:
 
 ### ⚠️ What is admitted (and why)
 
-The parser uses a small, focused set of axioms. Each one is listed here so you
-can audit them — nothing else in the codebase is admitted.
+The trust base is `include/gremlinp/axioms.h`. Everything in that file is
+admitted; everything in `include/gremlinp/lemmas.h` is checked. The split is
+deliberate — an audit only needs to read `axioms.h`.
 
-**1. Simple keyword facts** — e.g. `KW_ENUM[0] == 'e'`
-Stated once per keyword across the entry files. These are trivially true by
-the static initializer but WP's default memory model struggles to see through
-`static const char KW_FOO[] = "foo"` reliably enough to discharge them in the
-SMT backends.
+**1. Recursive logic function lemmas** — `count_newlines_step`,
+`count_newlines_non_negative`, `count_newlines_bounded`
+Properties of `count_newlines`, a recursive ACSL logic function used to
+compute line numbers. They are trivially true by induction over `(to - from)`,
+but Alt-Ergo and Z3 cannot do induction in reasonable time. An interactive
+prover (Coq, Isabelle) could close them — we take them as axioms to keep
+verification within the WP/SMT tool loop.
 
-**2. Recursive logic function lemmas** — `count_newlines_*`,
-`ident_is_full_ident`, `dot_ident_is_full_ident`, `full_ident_extend`
-These are properties of recursive ACSL logic definitions. Proving them
-requires mathematical induction, which Alt-Ergo and Z3 cannot do automatically
-in reasonable time. They are correct by construction of the underlying logic
-function and an interactive prover (Coq, Isabelle) could formalize them; we
-take them as axioms to keep verification within the WP/SMT tool loop.
-
-**3. Libc numeric parsing** — `strtoll_value_correct`, `strtoull_value_correct`,
+**2. Libc numeric parsing** — `strtoll_value_correct`, `strtoull_value_correct`,
 `parsed_double_value`
 We use libc `strtoll`/`strtoull`/`strtod` for integer and float literal
 parsing. Their numeric semantics are not modelled by Frama-C's libc stubs; we
@@ -186,8 +188,29 @@ axiomatize that when the libc call reports success, the returned value is in
 the documented range. The *string ranges* WP feeds those functions are still
 checked (the `\separated` and `\valid_read` requirements are proved).
 
-These axioms are intentionally small and local — they do not hide bugs in the
-parser itself.
+**3. `strncmp` byte-by-byte equality** — `strncmp_zero_iff_chars_equal`
+Frama-C's libc declares `strncmp` as an opaque logic function; we add a
+single axiom restating its ISO C semantics for the case we use it in
+(comparing a buffer region against a fixed-length keyword with no interior
+nulls). The axiom is local and the precondition matches our call sites.
+
+**4. Thin libc/macro wrappers** — `gremlinp_strtod` / `gremlinp_strtoll` /
+`gremlinp_strtoull`, `gremlinp_pos_infinity` / `gremlinp_neg_infinity` /
+`gremlinp_quiet_nan`
+Declared `extern` in `include/gremlinp/std.h` with stronger contracts than
+upstream Frama-C provides (`assigns __fc_errno`), then defined in
+`src/entries/std.c`, which is built into `libgremlinp.a` but **not** passed
+to the verifier. WP sees only the stronger declarations. This works around
+two upstream Frama-C limitations:
+- The bundled `strtod` contract does not assign `__fc_errno`, which would
+  otherwise make our `errno == ERANGE` overflow handling appear as dead code.
+- WP does not recognise the `INFINITY` / `NAN` macros expanded by `<math.h>`
+  ("Hide sub-term definition / Unexpected constant literal INFINITY"), and
+  `-wp-rte` would otherwise generate undischargeable `is_nan_or_infinite`
+  assertions on every helper that materialises a sentinel float.
+
+These admitted facts are intentionally small and local — they do not hide bugs
+in the parser itself.
 
 ### ❓ What is not verified
 
@@ -196,7 +219,7 @@ parser itself.
 - 📜 **Faithfulness to the protobuf grammar** — WP proves the code matches
   its ACSL contract. It does not prove the contract is a correct encoding
   of the official protobuf/editions grammar. That correspondence is
-  checked by the integration test against `test_data/google/proto3.proto`.
+  checked by the integration test against `tests/proto/proto3.proto`.
 - 🧵 **Thread safety** — functions are pure and span-based, so multiple
   readers over the same `const char *` are fine in practice, but there is
   no formal multi-thread spec.
@@ -255,9 +278,18 @@ rm -rf ../.wp-cache && make verify
 ```
 parser/
 ├── include/gremlinp/   — public headers
+│   ├── axioms.h        — admitted trust base (predicates + axioms)
+│   ├── lemmas.h        — checked lemmas (claimed and discharged by WP,
+│   │                     as opposed to admitted in axioms.h)
+│   └── std.h           — extern declarations for libc/macro wrappers
+│                         with stronger contracts than upstream
 ├── src/entries/        — parser implementation, one file per grammar element
+│   └── std.c           — bodies of the std.h wrappers; built into the
+│                         library but NOT passed to frama-c (so WP only
+│                         sees the declarations + their contracts)
 ├── src/lib.c           — empty wrapper (kept for library linkage)
 ├── tests/              — integration tests (not verified)
+│   └── proto/          — golden .proto fixtures used by the tests
 ├── VERSION             — single source of truth for the version
 └── CMakeLists.txt      — build + verify targets
 ```

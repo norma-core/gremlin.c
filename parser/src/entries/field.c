@@ -4,9 +4,6 @@
 static const char KW_OPTIONAL[] = "optional";
 static const char KW_REQUIRED[] = "required";
 static const char KW_REPEATED[] = "repeated";
-/*@ axiomatic Kw_opt_nonempty { axiom kw_opt_nonempty: KW_OPTIONAL[0] == 'o'; } */
-/*@ axiomatic Kw_req_nonempty { axiom kw_req_nonempty: KW_REQUIRED[0] == 'r'; } */
-/*@ axiomatic Kw_rep_nonempty { axiom kw_rep_nonempty: KW_REPEATED[0] == 'r'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
@@ -45,15 +42,15 @@ gremlinp_field_parse(struct gremlinp_parser_buffer *buf)
     size_t start = buf->offset;
 
     // Optional label
-    if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_OPTIONAL)) {
+    if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_OPTIONAL, sizeof(KW_OPTIONAL) - 1)) {
         result.label = GREMLINP_FIELD_LABEL_OPTIONAL;
         enum gremlinp_parsing_error err = gremlinp_parser_buffer_skip_spaces(buf);
         if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
-    } else if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_REQUIRED)) {
+    } else if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_REQUIRED, sizeof(KW_REQUIRED) - 1)) {
         result.label = GREMLINP_FIELD_LABEL_REQUIRED;
         enum gremlinp_parsing_error err = gremlinp_parser_buffer_skip_spaces(buf);
         if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }
-    } else if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_REPEATED)) {
+    } else if (gremlinp_parser_buffer_check_str_and_shift(buf, KW_REPEATED, sizeof(KW_REPEATED) - 1)) {
         result.label = GREMLINP_FIELD_LABEL_REPEATED;
         enum gremlinp_parsing_error err = gremlinp_parser_buffer_skip_spaces(buf);
         if (err != GREMLINP_OK) { buf->offset = start; result.error = err; return result; }

@@ -3,7 +3,6 @@
 #include <string.h>
 
 static const char KW_SYNTAX[] = "syntax";
-/*@ axiomatic Kw_syntax_nonempty { axiom kw_syntax_nonempty: KW_SYNTAX[0] == 's'; } */
 
 /*@ requires len == 6 ==> \valid_read(start + (0 .. 5));
     assigns  \nothing;
@@ -42,7 +41,7 @@ gremlinp_syntax_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_SYNTAX)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_SYNTAX, sizeof(KW_SYNTAX) - 1)) {
         result.error = GREMLINP_ERROR_INVALID_SYNTAX_DEF;
         return result;
     }

@@ -17,7 +17,10 @@ struct gremlinp_parser_buffer {
         from >= to ? 0 :
         (buf[from] == '\n' ? 1 : 0) + count_newlines(buf, from + 1, to);
 
-      // Obvious by definition; Alt-Ergo/Z3 can't prove by induction.
+      // Inductive properties of count_newlines. Trivially true by induction
+      // over (to - from), but Alt-Ergo / Z3 cannot discharge induction in
+      // reasonable time. Admitted; an interactive prover (Coq) could close
+      // them. Audited as part of the trust base.
       axiom count_newlines_step{L}:
         \forall char *buf, integer from, integer to;
           from < to ==>
@@ -144,6 +147,25 @@ struct gremlinp_parser_buffer {
       s[0] == 'p' && s[1] == 'r' && s[2] == 'o' &&
       s[3] == 't' && s[4] == 'o' &&
       (s[5] == '2' || s[5] == '3');
+*/
+
+/*@ axiomatic StrncmpEq {
+      // strncmp returns 0 iff the first n bytes match, provided the right-hand
+      // operand has no embedded '\0' within the first n bytes. Both pointers
+      // must allow valid reads of n bytes. Faithful restatement of ISO C
+      // strncmp semantics for the case we use it in (matching a buffer
+      // region against a fixed keyword of length n with no interior nulls).
+      // Admitted because frama-c/libc leaves strncmp as an opaque logic
+      // function.
+      axiom strncmp_zero_iff_chars_equal:
+        \forall char *s1, char *s2, integer n;
+          0 <= n ==>
+          \valid_read(s1 + (0 .. n - 1)) ==>
+          \valid_read(s2 + (0 .. n - 1)) ==>
+          (\forall integer k; 0 <= k < n ==> s2[k] != '\0') ==>
+          (strncmp(s1, s2, (size_t) n) == 0 <==>
+           (\forall integer k; 0 <= k < n ==> s1[k] == s2[k]));
+    }
 */
 
 /*@ axiomatic ParsedValue {

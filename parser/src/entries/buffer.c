@@ -1,6 +1,7 @@
 #include <string.h>
 #include "gremlinp/buffer.h"
 #include "gremlinp/errors.h"
+#include "gremlinp/lemmas.h"
 
 static const char WHITESPACE_CHARS[] = {' ', '\t', '\n', '\r'};
 static const size_t WHITESPACE_COUNT = sizeof(WHITESPACE_CHARS) / sizeof(WHITESPACE_CHARS[0]);
@@ -43,23 +44,31 @@ gremlinp_parser_buffer_init(struct gremlinp_parser_buffer *pb, char *buf, size_t
 }
 
 /*@ requires valid_buffer(pb);
-    requires valid_read_string(prefix);
-    requires prefix[0] != '\0';
-    assigns  pb->offset \from pb->offset;
-    ensures  \result == \true  ==> pb->offset > \old(pb->offset);
+    requires prefix_len > 0;
+    requires prefix_len <= 10;
+    requires \valid_read(prefix + (0 .. prefix_len - 1));
+    requires valid_read_nstring(prefix, prefix_len);
+    assigns  pb->offset;
+    ensures  \result == \true ==>
+               pb->offset == \old(pb->offset) + prefix_len;
     ensures  \result == \false ==> pb->offset == \old(pb->offset);
     ensures  pb->offset <= pb->buf_size;
+    ensures  pb->offset >= \old(pb->offset);
 */
 bool
-gremlinp_parser_buffer_check_str_and_shift(struct gremlinp_parser_buffer *pb, const char *prefix)
+gremlinp_parser_buffer_check_str_and_shift(struct gremlinp_parser_buffer *pb,
+                                           const char *prefix,
+                                           size_t prefix_len)
 {
-	size_t prefix_len = strlen(prefix);
 	if (pb->offset + prefix_len > pb->buf_size) {
 		return false;
 	}
 
 	if (strncmp(pb->buf + pb->offset, prefix, prefix_len) == 0) {
+		size_t old = pb->offset;
+		(void)old;
 		pb->offset += prefix_len;
+		/*@ assert pb->offset == old + prefix_len; */
 		return true;
 	}
 
@@ -67,17 +76,22 @@ gremlinp_parser_buffer_check_str_and_shift(struct gremlinp_parser_buffer *pb, co
 }
 
 /*@ requires valid_buffer(pb);
-    requires valid_read_string(prefix);
-    requires prefix[0] != '\0';
-    assigns  pb->offset \from pb->offset;
-    ensures  \result == \true  ==> pb->offset > \old(pb->offset);
+    requires prefix_len > 0;
+    requires prefix_len <= 10;
+    requires \valid_read(prefix + (0 .. prefix_len - 1));
+    requires valid_read_nstring(prefix, prefix_len);
+    assigns  pb->offset;
+    ensures  \result == \true  ==>
+               pb->offset == \old(pb->offset) + prefix_len + 1;
     ensures  \result == \false ==> pb->offset == \old(pb->offset);
+    ensures  pb->offset >= \old(pb->offset);
     ensures  pb->offset <= pb->buf_size;
 */
 bool
-gremlinp_parser_buffer_check_str_with_space_and_shift(struct gremlinp_parser_buffer *pb, const char *prefix)
+gremlinp_parser_buffer_check_str_with_space_and_shift(struct gremlinp_parser_buffer *pb,
+                                                       const char *prefix,
+                                                       size_t prefix_len)
 {
-	size_t prefix_len = strlen(prefix);
 	if (pb->offset + prefix_len >= pb->buf_size) {
 		return false;
 	}
@@ -85,12 +99,15 @@ gremlinp_parser_buffer_check_str_with_space_and_shift(struct gremlinp_parser_buf
 	if (strncmp(pb->buf + pb->offset, prefix, prefix_len) != 0) {
 		return false;
 	}
-	
+
 	if (is_whitespace(pb->buf[pb->offset + prefix_len])) {
+		size_t old = pb->offset;
+		(void)old;
 		pb->offset += prefix_len + 1;
+		/*@ assert pb->offset == old + prefix_len + 1; */
 		return true;
 	}
-	
+
 	return false;
 }
 

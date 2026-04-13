@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_OPTION[] = "option";
-/*@ axiomatic Kw_option_nonempty { axiom kw_option_nonempty: KW_OPTION[0] == 'o'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset;
@@ -53,7 +52,7 @@ parse_option_name_part(struct gremlinp_parser_buffer *buf)
 }
 
 /*@ requires valid_buffer(buf);
-    assigns  buf->offset;
+    assigns  buf->offset, errno;
     ensures  buf->offset >= \old(buf->offset);
     ensures  buf->offset <= buf->buf_size;
     ensures  \result.error == GREMLINP_OK ==>
@@ -71,7 +70,7 @@ gremlinp_option_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_OPTION)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_OPTION, sizeof(KW_OPTION) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }

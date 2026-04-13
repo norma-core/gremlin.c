@@ -2,7 +2,6 @@
 #include "gremlinp/lexems.h"
 
 static const char KW_PACKAGE[] = "package";
-/*@ axiomatic Kw_package_nonempty { axiom kw_package_nonempty: KW_PACKAGE[0] == 'p'; } */
 
 /*@ requires valid_buffer(buf);
     assigns  buf->offset;
@@ -25,7 +24,7 @@ gremlinp_package_parse(struct gremlinp_parser_buffer *buf)
 
     size_t start = buf->offset;
 
-    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_PACKAGE)) {
+    if (!gremlinp_parser_buffer_check_str_and_shift(buf, KW_PACKAGE, sizeof(KW_PACKAGE) - 1)) {
         result.error = GREMLINP_ERROR_UNEXPECTED_TOKEN;
         return result;
     }
