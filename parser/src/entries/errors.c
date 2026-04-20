@@ -98,10 +98,6 @@ gremlinp_parsing_error_to_string(enum gremlinp_parsing_error error)
 	case GREMLINP_ERROR_OUT_OF_MEMORY:
 		return ("Out of memory");
 
-	/* Feature Support */
-	case GREMLINP_ERROR_FEATURE_NOT_SUPPORTED:
-		return ("Feature not supported");
-
 	/* Additional C-specific errors */
 	case GREMLINP_ERROR_NULL_POINTER:
 		return ("NULL pointer");

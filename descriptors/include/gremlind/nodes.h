@@ -172,16 +172,6 @@ struct gremlind_message {
 	 * pass has run.
 	 */
 	const char				*c_name;
-	/*
-	 * Codegen gate — true iff this message, and every message it
-	 * transitively references via a field, can be emitted under the
-	 * current codegen scope.  Computed by
-	 * `gremlinc_compute_emittability` as a fixpoint over the whole
-	 * file set; reading it before that pre-pass has run is meaningless.
-	 * Cycles (A → B → A) converge because emittability is monotone
-	 * (once flipped false, stays false).
-	 */
-	bool					is_emittable;
 };
 
 struct gremlind_messages {
