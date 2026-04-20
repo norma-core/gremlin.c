@@ -38,7 +38,41 @@ emit_file(struct gremlind_arena *arena,
 	err = gremlinc_write_cstr(w, guard);       if (err) goto out;
 	err = gremlinc_write_cstr(w, "\n#define "); if (err) goto out;
 	err = gremlinc_write_cstr(w, guard);       if (err) goto out;
-	err = gremlinc_write_cstr(w, "\n\n#include \"gremlin.h\"\n\n");
+	err = gremlinc_write_cstr(w, "\n\n");
+	if (err) goto out;
+
+	/* Stdlib includes are gated by codegen-hint flags that descriptors
+	 * sets during `gremlind_build_file` — see `struct gremlind_file`. */
+	if (file->needs_math_h) {
+		err = gremlinc_write_cstr(w, "#include <math.h>\n");
+		if (err) goto out;
+	}
+	if (file->needs_string_h) {
+		err = gremlinc_write_cstr(w, "#include <string.h>\n");
+		if (err) goto out;
+	}
+	err = gremlinc_write_cstr(w, "#include \"gremlin.h\"\n");
+	if (err) goto out;
+
+	/* Pull in every imported file's generated header so types it
+	 * declares (referenced by our fields) are visible at compile
+	 * time.  Imports map 1:1 onto generated files: `foo/bar.proto`
+	 * → `foo/bar.pb.h` in the same layout as our output tree. */
+	for (size_t i = 0; i < file->imports.count; i++) {
+		const struct gremlinp_import_parse_result *ip =
+			&file->imports.items[i].parsed;
+		err = gremlinc_write_cstr(w, "#include \"");
+		if (err) goto out;
+		size_t plen = ip->path_length;
+		/* Strip trailing ".proto" to substitute ".pb.h". */
+		if (plen > 6 && memcmp(ip->path_start + plen - 6, ".proto", 6) == 0)
+			plen -= 6;
+		err = gremlinc_write(w, ip->path_start, plen);
+		if (err) goto out;
+		err = gremlinc_write_cstr(w, ".pb.h\"\n");
+		if (err) goto out;
+	}
+	err = gremlinc_write_cstr(w, "\n");
 	if (err) goto out;
 
 	/* Enums are always leaves — emit in declaration order. */

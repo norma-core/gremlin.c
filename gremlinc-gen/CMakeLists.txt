@@ -18,6 +18,14 @@ if(NOT TARGET gremlinc)
                      ${CMAKE_CURRENT_BINARY_DIR}/gremlinc-build)
 endif()
 
+# The generated .pb.h files `#include "gremlin.h"` from the runtime, so
+# consumers of `gremlinc_generate()` also need `gremlin_runtime`
+# visible. Pull it in if we haven't already.
+if(NOT TARGET gremlin_runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+                     ${CMAKE_CURRENT_BINARY_DIR}/runtime-build)
+endif()
+
 add_executable(gremlinc-gen
     src/main.c
     src/args.c
@@ -26,3 +34,8 @@ add_executable(gremlinc-gen
     src/emit_file.c
 )
 target_link_libraries(gremlinc-gen PRIVATE gremlinc)
+
+# Expose the `gremlinc_generate()` helper to anything that pulls in
+# this subdirectory.  Consumers call it to hook proto files into their
+# own build; see cmake/GremlincGenerate.cmake for the full contract.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/GremlincGenerate.cmake)
