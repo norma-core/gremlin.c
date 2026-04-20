@@ -3,22 +3,34 @@
 ![version](https://img.shields.io/badge/version-0.1.0--dev-orange)
 ![status](https://img.shields.io/badge/status-active%20development-yellow)
 ![language](https://img.shields.io/badge/C-C99-blue)
+![deps](https://img.shields.io/badge/dependencies-0-brightgreen)
 ![verified](https://img.shields.io/badge/Frama--C%20WP-8440%2F8440-brightgreen)
 
 > 🚧 **Active development.** APIs, codegen output, and verification
 > boundaries are all still moving. Pin a commit if you depend on it.
 
-`gremlin.c` is a C99 port of
-[**gremlin.zig**](https://github.com/octopus-foundation/gremlin.zig) —
-a zero-dependency, zero-allocation protobuf implementation built
-around the same ideas: parse once, emit tight codegen, keep the
-runtime primitives small enough to verify formally. Same goals, same
-encode / decode shape, same benchmark corpus — different language.
+`gremlin.c` is **pure C99 with zero dependencies** — a protobuf
+implementation with no `protoc` invocation, no third-party libraries,
+no generated-code allocations, and no libc calls beyond `memcpy` /
+`memcmp` in the hot paths. Every line it runs is in this repo, built
+from a plain C99 compiler and CMake ≥ 3.10.
 
-Everything beyond a C99 compiler and CMake ≥ 3.10 is in-tree: the
-parser, descriptor pool, wire-format primitives, codegen, and the CLI
-driver. No `protoc`, no libm link, no hidden `malloc` paths in the
-generated code.
+It's a port of [**gremlin.zig**](https://github.com/octopus-foundation/gremlin.zig)
+and keeps the same encode / decode shape, the same benchmark corpus,
+and the same idea: parse once, emit tight codegen, keep the runtime
+primitives small enough to verify formally.
+
+**What "zero dependencies" means here:**
+- 🛠️ No `protoc`. The parser, descriptor pool, and code generator
+  are all in-tree (see [subprojects](#-subprojects) below).
+- 📚 No third-party libraries. Just C standard library — and the
+  generated code only touches `<stdint.h>`, `<stddef.h>`, plus
+  `<math.h>` / `<string.h>` *if* the proto actually needs them
+  (conditionally included by the codegen, never by default).
+- 🧱 No hidden `malloc` in generated code. Writer buffers are
+  caller-owned; readers are zero-copy views over caller memory.
+- 🏗️ No build-time dependencies beyond a C99 compiler + CMake. No
+  Python, no configure script, no fetched packages.
 
 ## 📑 Table of contents
 
