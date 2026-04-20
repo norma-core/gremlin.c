@@ -17,6 +17,25 @@
  * body.
  */
 
+/* Update the file's codegen-hint flags for one just-filled field. */
+static void
+hoist_codegen_hints(struct gremlind_file *file, const struct gremlind_field *fld)
+{
+	if (!fld->has_default) return;
+	if (fld->default_value.kind == GREMLINP_CONST_FLOAT) {
+		double v = fld->default_value.u.float_value;
+		if (isinf(v) || isnan(v)) file->needs_math_h = true;
+	}
+	/* Bytes/string defaults emit memcmp presence guards (<string.h>). */
+	if (fld->parsed.type.kind == GREMLINP_FIELD_TYPE_NAMED) {
+		const struct gremlinp_span_parse_result *tn = &fld->parsed.type.u.named;
+		if ((tn->length == 6 && memcmp(tn->start, "string", 6) == 0) ||
+		    (tn->length == 5 && memcmp(tn->start, "bytes",  5) == 0)) {
+			file->needs_string_h = true;
+		}
+	}
+}
+
 struct counts {
 	size_t n_imports;
 	size_t n_enums;			/* all nesting levels */
@@ -321,16 +340,7 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 			fld->parsed = e.u.field;
 			fld->has_default = extract_default_option(
 				buf, &e.u.field.options, &fld->default_value);
-			/* Hoist codegen-relevant hints onto the file. Non-finite
-			 * float/double defaults force a <math.h> include in the
-			 * generated C (for INFINITY / NAN). */
-			if (fld->has_default &&
-			    fld->default_value.kind == GREMLINP_CONST_FLOAT) {
-				double v = fld->default_value.u.float_value;
-				if (isinf(v) || isnan(v)) {
-					state->file->needs_math_h = true;
-				}
-			}
+			hoist_codegen_hints(state->file, fld);
 			break;
 		}
 		case GREMLINP_MSG_ENTRY_ENUM: {
@@ -379,13 +389,7 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 				fld->parsed.error = GREMLINP_OK;
 				fld->has_default = extract_default_option(
 					buf, &oe.u.field.options, &fld->default_value);
-				if (fld->has_default &&
-				    fld->default_value.kind == GREMLINP_CONST_FLOAT) {
-					double v = fld->default_value.u.float_value;
-					if (isinf(v) || isnan(v)) {
-						state->file->needs_math_h = true;
-					}
-				}
+				hoist_codegen_hints(state->file, fld);
 			}
 			body_scope_leave(&oscope, buf);
 			break;

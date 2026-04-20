@@ -198,13 +198,19 @@ struct gremlind_file {
 	struct gremlind_messages		messages;	/* flat, all nesting levels */
 	struct gremlind_visible_files		visible;	/* set by gremlind_compute_visibility */
 	/*
-	 * Derived codegen hint: set true if this file has any field whose
-	 * `[default]` option evaluates to a non-finite float/double (inf /
-	 * -inf / nan). Downstream C codegen needs to know so it emits
-	 * `#include <math.h>` only when necessary — otherwise every
-	 * generated header would pull in libm for no reason.
+	 * Derived codegen hints — set during `gremlind_build_file` as fields
+	 * are materialised.  They let the C emitter pull in standard
+	 * headers only when the generated body actually references their
+	 * contents, keeping translation-unit size minimal.
+	 *
+	 *   needs_math_h    — any field has a `[default]` that evaluates
+	 *                     to a non-finite float/double (inf / -inf /
+	 *                     nan).  Emitted code uses `INFINITY` / `NAN`.
+	 *   needs_string_h  — any bytes/string field has a `[default]`.
+	 *                     Emitted code uses `memcmp` in presence guards.
 	 */
 	bool					needs_math_h;
+	bool					needs_string_h;
 };
 
 #endif /* !_GREMLIND_NODES_H_ */
