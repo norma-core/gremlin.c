@@ -101,10 +101,23 @@ Dependencies: a C99 compiler and CMake ≥ 3.10. The parser + descriptors
 sources are linked in directly (not as separate static libs), so the
 whole codegen stack is one build unit.
 
+From this directory:
+
 ```bash
 mkdir build && cd build
 cmake ..
 make
+```
+
+Or from the [top-level repo root](../README.md) (recommended for
+consumers that also want the [`gremlinc-gen`](../gremlinc-gen/README.md)
+CLI driver):
+
+```bash
+mkdir build && cd build
+cmake ..
+make gremlinc         # just the library
+make gremlinc-gen     # also the CLI
 ```
 
 Artifacts:
@@ -124,7 +137,7 @@ typed-C value conversions (field defaults).
 
 ### ✅ What is proven
 
-**235 / 235 goals + 66 / 66 smoke tests pass**, run by `make verify`:
+**235 / 235 goals + 66 / 66 smoke tests pass**, run by `make verify-gremlinc`:
 
 | Group                  | Proved      | Smoke     | Notes                                          |
 | ---------------------- | ----------- | --------- | ---------------------------------------------- |
@@ -172,7 +185,7 @@ install instructions — the setup is identical.
 From the build directory:
 
 ```bash
-make verify               # both targets
+make verify-gremlinc      # both targets (the gremlinc umbrella)
 make verify-snake-case    # snake_case converter only
 make verify-const-convert # const → typed-C conversions only
 ```

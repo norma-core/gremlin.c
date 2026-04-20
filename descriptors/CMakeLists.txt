@@ -135,8 +135,8 @@ if(FRAMAC)
         VERBATIM
     )
 
-    add_custom_target(verify
+    add_custom_target(verify-descriptors
         DEPENDS verify-arena
-        COMMENT "All gremlind FRAMA-C WP verifications"
+        COMMENT "WP: all gremlind verification targets"
     )
 endif()

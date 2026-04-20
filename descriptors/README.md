@@ -103,10 +103,20 @@ Dependencies: a C99 compiler and CMake ≥ 3.10. The parser is linked in
 as sources (not as a separate static lib) so the whole stack can be
 verified or instrumented in one pass.
 
+From this directory:
+
 ```bash
 mkdir build && cd build
 cmake ..
 make
+```
+
+Or from the [top-level repo root](../README.md):
+
+```bash
+mkdir build && cd build
+cmake ..
+make gremlind         # just descriptors
 ```
 
 Artifacts:
@@ -170,8 +180,8 @@ install instructions — the setup is identical.
 From the build directory:
 
 ```bash
-make verify          # all gremlind WP targets
-make verify-arena    # arena primitives only
+make verify-descriptors # all gremlind WP targets (the descriptors umbrella)
+make verify-arena       # arena primitives only
 ```
 
 Proof results are cached in `<repo>/descriptors/.wp-cache/`; a cold

@@ -86,11 +86,16 @@ post-conditions exactly.
 
 Dependencies: a C99 compiler and CMake ≥ 3.10.
 
+From this directory:
+
 ```bash
 mkdir build && cd build
 cmake ..
 make
 ```
+
+Or from the [top-level repo root](../README.md) — the runtime is picked
+up via `add_subdirectory(runtime)`.
 
 The library is header-only (`add_library(gremlin_runtime INTERFACE)`),
 so there is no artefact to install beyond the header itself.

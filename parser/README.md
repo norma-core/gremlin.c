@@ -112,10 +112,21 @@ canonical example of how to use the library from start to finish.
 
 Dependencies: a C99 compiler and CMake ≥ 3.10.
 
+From this directory:
+
 ```bash
 mkdir build && cd build
 cmake ..
 make
+```
+
+Or from the [top-level repo root](../README.md) to build every sibling
+project in one tree:
+
+```bash
+mkdir build && cd build
+cmake ..
+make gremlinp         # just the parser
 ```
 
 Artifacts:
@@ -134,7 +145,7 @@ contradictory contracts) in three groups:**
 | 🧮 `verify-buffer`  | 409 / 409   | 80 / 80     | 0m30s         | Buffer primitives                   |
 | 🔤 `verify-lexems`  | 1787 / 1787 | 377 / 377   | 4m02s         | Lexers, identifier, literal parsers |
 | 🌲 `verify-syntax`  | 5290 / 5290 | 1029 / 1029 | 17m52s        | All entry parsers                   |
-| **`make verify`**  | **7486 / 7486** | **1486 / 1486** | **22m12s**    | All three groups in parallel        |
+| **`make verify-parser`** | **7486 / 7486** | **1486 / 1486** | **22m12s** | All three groups in parallel   |
 
 ¹ Wall-clock with a cold `.wp-cache`. With cache, subsequent runs only re-prove
 changed goals and finish in seconds. Measured with `-wp-par 4` on a developer
@@ -256,7 +267,7 @@ eval $(opam env --switch=frama-c)
 From the build directory:
 
 ```bash
-make verify           # 🎯 Runs all three groups
+make verify-parser    # 🎯 Runs all three groups (the parser umbrella)
 make verify-buffer    # 🧮 Buffer primitives only
 make verify-lexems    # 🔤 Lexers (includes buffer)
 make verify-syntax    # 🌲 Entry parsers (includes lexems + buffer)
@@ -270,7 +281,7 @@ If you edit a function's contract or body and want to re-prove from scratch:
 
 ```bash
 # from parser/build/
-rm -rf ../.wp-cache && make verify
+rm -rf ../.wp-cache && make verify-parser
 ```
 
 ## 📁 Layout

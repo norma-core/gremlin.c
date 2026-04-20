@@ -119,7 +119,7 @@ if(FRAMAC)
         VERBATIM
     )
 
-    add_custom_target(verify
+    add_custom_target(verify-gremlinc
         DEPENDS verify-snake-case verify-const-convert
         COMMENT "WP: all gremlinc verification targets"
     )

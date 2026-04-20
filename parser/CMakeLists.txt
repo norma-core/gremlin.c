@@ -124,8 +124,8 @@ if(FRAMAC)
         VERBATIM
     )
 
-    add_custom_target(verify
+    add_custom_target(verify-parser
         DEPENDS verify-buffer verify-lexems verify-syntax
-        COMMENT "All FRAMA-C WP verifications"
+        COMMENT "WP: all gremlinp verification targets"
     )
 endif()
