@@ -1,4 +1,5 @@
 #include <string.h>
+#include <math.h>
 
 #include "gremlind/arena.h"
 #include "gremlind/build.h"
@@ -73,6 +74,45 @@ static enum gremlinp_parsing_error fill_message(struct gremlind_arena *arena,
 	struct gremlinp_parser_buffer *buf, struct fill_state *state,
 	const struct gremlinp_message_parse_result *parsed,
 	struct gremlind_message *parent);
+
+/*
+ * Re-parse a field's options span to find `default = V`. The option list
+ * was validated once by gremlinp_option_list_consume during the field
+ * parse, so the span is known-well-formed — errors here are treated as
+ * "not found". Works on a copy of the parser buffer so the caller's
+ * cursor is untouched. Iteration mirrors gremlinp_option_list_consume's
+ * inner loop (skip '[', parse items separated by ',', stop on ']'), but
+ * extracts each `(name, value)` pair instead of just counting.
+ */
+static bool
+extract_default_option(const struct gremlinp_parser_buffer *orig,
+		       const struct gremlinp_option_list_result *opts,
+		       struct gremlinp_const_parse_result *out)
+{
+	if (opts->count == 0) return false;
+
+	struct gremlinp_parser_buffer b = *orig;
+	b.offset = opts->start;
+	if (!gremlinp_parser_buffer_check_and_shift(&b, '[')) return false;
+
+	for (;;) {
+		if (gremlinp_parser_buffer_skip_spaces(&b) != GREMLINP_OK) return false;
+		if (gremlinp_parser_buffer_check_and_shift(&b, ']')) return false;
+
+		struct gremlinp_option_item_result item = gremlinp_option_item_parse(&b);
+		if (item.error != GREMLINP_OK) return false;
+
+		if (item.name_length == 7 &&
+		    memcmp(item.name_start, "default", 7) == 0) {
+			*out = item.value;
+			return true;
+		}
+
+		if (gremlinp_parser_buffer_skip_spaces(&b) != GREMLINP_OK) return false;
+		if (gremlinp_parser_buffer_check_and_shift(&b, ']')) return false;
+		if (!gremlinp_parser_buffer_check_and_shift(&b, ',')) return false;
+	}
+}
 
 static enum gremlinp_parsing_error
 count_entries(struct gremlinp_parser_buffer *buf, struct counts *out)
@@ -214,7 +254,11 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 	out->fields.items = NULL;
 	out->fields.count = 0;
 
-	/* Local count of this message's own fields (not recursive). */
+	/* Local count of this message's own fields (not recursive).  Oneof
+	 * entries contribute their inner fields — oneof semantics are
+	 * lowered to "regular optional fields whose at-most-one-set
+	 * invariant is the caller's concern".  Tracking the oneof group
+	 * is not useful at codegen time with that lowering. */
 	size_t n_fields = 0;
 	{
 		struct body_scope scope;
@@ -227,6 +271,24 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 				return e.error;
 			}
 			if (e.kind == GREMLINP_MSG_ENTRY_FIELD) n_fields++;
+			else if (e.kind == GREMLINP_MSG_ENTRY_ONEOF) {
+				/* Walk the oneof body counting its fields. */
+				struct body_scope oscope;
+				body_scope_enter(&oscope, buf,
+					e.u.oneof.body_start, e.u.oneof.body_end);
+				for (;;) {
+					struct gremlinp_oneof_entry_result oe =
+						gremlinp_oneof_next_entry(buf);
+					if (oe.error != GREMLINP_OK) {
+						if (at_eof(buf)) break;
+						body_scope_leave(&oscope, buf);
+						body_scope_leave(&scope, buf);
+						return oe.error;
+					}
+					if (oe.kind == GREMLINP_ONEOF_ENTRY_FIELD) n_fields++;
+				}
+				body_scope_leave(&oscope, buf);
+			}
 		}
 		body_scope_leave(&scope, buf);
 	}
@@ -253,9 +315,24 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 			return e.error;
 		}
 		switch (e.kind) {
-		case GREMLINP_MSG_ENTRY_FIELD:
-			out->fields.items[fi++].parsed = e.u.field;
+		case GREMLINP_MSG_ENTRY_FIELD: {
+			struct gremlind_field *fld = &out->fields.items[fi++];
+			memset(fld, 0, sizeof *fld);
+			fld->parsed = e.u.field;
+			fld->has_default = extract_default_option(
+				buf, &e.u.field.options, &fld->default_value);
+			/* Hoist codegen-relevant hints onto the file. Non-finite
+			 * float/double defaults force a <math.h> include in the
+			 * generated C (for INFINITY / NAN). */
+			if (fld->has_default &&
+			    fld->default_value.kind == GREMLINP_CONST_FLOAT) {
+				double v = fld->default_value.u.float_value;
+				if (isinf(v) || isnan(v)) {
+					state->file->needs_math_h = true;
+				}
+			}
 			break;
+		}
 		case GREMLINP_MSG_ENTRY_ENUM: {
 			enum gremlinp_parsing_error r = fill_enum(arena, buf, state,
 				&e.u.enumeration, out);
@@ -268,9 +345,53 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 			if (r != GREMLINP_OK) { body_scope_leave(&scope, buf); return r; }
 			break;
 		}
+		case GREMLINP_MSG_ENTRY_ONEOF: {
+			/* Flatten each oneof field into `out->fields` as an
+			 * ordinary `OPTIONAL`-labelled field.  We synthesize a
+			 * `gremlinp_field_parse_result` from the oneof's own
+			 * parse result so downstream passes (type resolution,
+			 * codegen) treat them uniformly with real fields. */
+			struct body_scope oscope;
+			body_scope_enter(&oscope, buf,
+				e.u.oneof.body_start, e.u.oneof.body_end);
+			for (;;) {
+				struct gremlinp_oneof_entry_result oe =
+					gremlinp_oneof_next_entry(buf);
+				if (oe.error != GREMLINP_OK) {
+					if (at_eof(buf)) break;
+					body_scope_leave(&oscope, buf);
+					body_scope_leave(&scope, buf);
+					return oe.error;
+				}
+				if (oe.kind != GREMLINP_ONEOF_ENTRY_FIELD) continue;
+				struct gremlind_field *fld = &out->fields.items[fi++];
+				memset(fld, 0, sizeof *fld);
+				fld->parsed.label = GREMLINP_FIELD_LABEL_OPTIONAL;
+				fld->parsed.type.kind = GREMLINP_FIELD_TYPE_NAMED;
+				fld->parsed.type.u.named = oe.u.field.type_name;
+				fld->parsed.type.error = GREMLINP_OK;
+				fld->parsed.name_start = oe.u.field.name_start;
+				fld->parsed.name_length = oe.u.field.name_length;
+				fld->parsed.index = oe.u.field.index;
+				fld->parsed.options = oe.u.field.options;
+				fld->parsed.start = oe.u.field.start;
+				fld->parsed.end = oe.u.field.end;
+				fld->parsed.error = GREMLINP_OK;
+				fld->has_default = extract_default_option(
+					buf, &oe.u.field.options, &fld->default_value);
+				if (fld->has_default &&
+				    fld->default_value.kind == GREMLINP_CONST_FLOAT) {
+					double v = fld->default_value.u.float_value;
+					if (isinf(v) || isnan(v)) {
+						state->file->needs_math_h = true;
+					}
+				}
+			}
+			body_scope_leave(&oscope, buf);
+			break;
+		}
 		default:
-			/* oneof / option / extensions / reserved / extend / group
-			 * skipped in v1. */
+			/* option / extensions / reserved / extend / group skipped. */
 			break;
 		}
 	}

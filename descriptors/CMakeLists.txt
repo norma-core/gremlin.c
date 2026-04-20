@@ -44,6 +44,7 @@ set(AST_SOURCES
     src/arena.c
     src/arena_std.c
     src/build.c
+    src/extend.c
     src/name.c
     src/resolve.c
     src/lib.c

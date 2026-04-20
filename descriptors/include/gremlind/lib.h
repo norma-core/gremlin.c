@@ -12,6 +12,7 @@
 #include "nodes.h"
 #include "build.h"
 #include "resolve.h"
+#include "extend.h"
 #include "std.h"
 
 #include "gremlinp/lib.h"

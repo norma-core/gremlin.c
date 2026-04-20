@@ -67,6 +67,14 @@ struct gremlind_enum {
 	struct gremlind_enum_values		values;
 	struct gremlind_message			*parent;	/* NULL if top-level */
 	struct gremlind_scoped_name		scoped_name;	/* set by gremlind_compute_scoped_names */
+	/*
+	 * Generated C typedef name — set by gremlinc_assign_c_names (a
+	 * codegen pre-pass) before any emission begins. Consumers of a
+	 * reference to this enum (a field typed `<this-enum>`) read this
+	 * directly instead of recomputing via gremlinc_cname_for_type.
+	 * NULL until the pre-pass has run.
+	 */
+	const char				*c_name;
 };
 
 struct gremlind_enums {
@@ -108,6 +116,36 @@ struct gremlind_type_ref {
 struct gremlind_field {
 	struct gremlinp_field_parse_result	parsed;
 	struct gremlind_type_ref		type;		/* set by gremlind_resolve_type_refs */
+	/*
+	 * If `[default = V]` appears in the field's options, `has_default`
+	 * is set at build time and `default_value` carries the parser's
+	 * typed const result. Codegen converts it to the appropriate C
+	 * literal for the target scalar type. Proto3 scalars normally
+	 * can't carry `[default]`; the parser accepts it liberally and we
+	 * preserve it — codegen decides what's legal for its target.
+	 */
+	bool					has_default;
+	struct gremlinp_const_parse_result	default_value;
+	/*
+	 * For fields synthesized by `gremlind_propagate_extends` from an
+	 * `extend T { ... }` block, `origin_file` points at the file that
+	 * declared the extend (NOT the file that owns the target message).
+	 * Type-ref resolution uses the origin file's visibility set so the
+	 * field's type names resolve against the extending file's scope,
+	 * not the target's. NULL for ordinary in-place fields.
+	 */
+	struct gremlind_file			*origin_file;
+	/*
+	 * Scope where the extend block was declared: the enclosing
+	 * message's scoped_name (for nested extends) or the file's
+	 * package scope (for top-level extends). The type-ref resolver
+	 * walks prefixes of this instead of the target message's own
+	 * scoped_name — otherwise a field whose type is resolvable in
+	 * the declaration's scope but not in the target's scope would
+	 * fail to resolve. NULL iff `origin_file` is NULL (ordinary
+	 * in-place fields use their containing message's scope).
+	 */
+	const struct gremlind_scoped_name	*origin_scope;
 };
 
 struct gremlind_fields {
@@ -127,6 +165,23 @@ struct gremlind_message {
 	struct gremlind_fields			fields;
 	struct gremlind_message			*parent;	/* NULL if top-level */
 	struct gremlind_scoped_name		scoped_name;	/* set by gremlind_compute_scoped_names */
+	/*
+	 * Generated C typedef name — set by gremlinc_assign_c_names before
+	 * any emission begins. Field emission for reference types
+	 * (message/enum fields) reads this directly. NULL until the pre-
+	 * pass has run.
+	 */
+	const char				*c_name;
+	/*
+	 * Codegen gate — true iff this message, and every message it
+	 * transitively references via a field, can be emitted under the
+	 * current codegen scope.  Computed by
+	 * `gremlinc_compute_emittability` as a fixpoint over the whole
+	 * file set; reading it before that pre-pass has run is meaningless.
+	 * Cycles (A → B → A) converge because emittability is monotone
+	 * (once flipped false, stays false).
+	 */
+	bool					is_emittable;
 };
 
 struct gremlind_messages {
@@ -152,6 +207,14 @@ struct gremlind_file {
 	struct gremlind_enums			enums;		/* flat, all nesting levels */
 	struct gremlind_messages		messages;	/* flat, all nesting levels */
 	struct gremlind_visible_files		visible;	/* set by gremlind_compute_visibility */
+	/*
+	 * Derived codegen hint: set true if this file has any field whose
+	 * `[default]` option evaluates to a non-finite float/double (inf /
+	 * -inf / nan). Downstream C codegen needs to know so it emits
+	 * `#include <math.h>` only when necessary — otherwise every
+	 * generated header would pull in libm for no reason.
+	 */
+	bool					needs_math_h;
 };
 
 #endif /* !_GREMLIND_NODES_H_ */

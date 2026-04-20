@@ -411,8 +411,25 @@ gremlind_resolve_type_refs(struct gremlind_resolve_context *ctx)
 			struct gremlind_message *msg = &f->messages.items[m];
 			for (size_t fi = 0; fi < msg->fields.count; fi++) {
 				struct gremlind_field *fd = &msg->fields.items[fi];
+				/* Extension fields resolve in the context of
+				 * their ORIGIN (the `extend` declaration site),
+				 * not the target. The scope walk peels from the
+				 * extending declaration's scope — the enclosing
+				 * message's scoped_name for nested extends, the
+				 * package scope for top-level extends — against
+				 * the extending file's visible set. Ordinary
+				 * in-place fields use the target's scope + its
+				 * file's visible. */
+				const struct gremlind_scoped_name *scope =
+					(fd->origin_scope != NULL)
+						? fd->origin_scope
+						: &msg->scoped_name;
+				const struct gremlind_visible_files *vis =
+					(fd->origin_file != NULL)
+						? &fd->origin_file->visible
+						: &f->visible;
 				enum gremlinp_parsing_error err = resolve_field_type(
-					ctx->arena, fd, &msg->scoped_name, &f->visible);
+					ctx->arena, fd, scope, vis);
 				if (err != GREMLINP_OK) {
 					ctx->error = err;
 					ctx->failed_source_idx = i;
