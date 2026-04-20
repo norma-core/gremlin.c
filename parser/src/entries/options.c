@@ -1,13 +1,6 @@
 #include "gremlinp/entries.h"
 #include "gremlinp/lexems.h"
 
-struct gremlinp_option_item_result {
-    const char                      *name_start;
-    size_t                          name_length;
-    struct gremlinp_const_parse_result value;
-    enum gremlinp_parsing_error     error;
-};
-
 /*@ requires valid_buffer(buf);
     assigns  buf->offset, errno;
     ensures  buf->offset >= \old(buf->offset);
@@ -18,8 +11,8 @@ struct gremlinp_option_item_result {
     ensures  \result.error != GREMLINP_OK ==>
                buf->offset == \old(buf->offset);
 */
-static struct gremlinp_option_item_result
-parse_option_item(struct gremlinp_parser_buffer *buf)
+struct gremlinp_option_item_result
+gremlinp_option_item_parse(struct gremlinp_parser_buffer *buf)
 {
     struct gremlinp_const_parse_result empty_val;
     empty_val.error = GREMLINP_OK;
@@ -103,7 +96,7 @@ gremlinp_option_list_consume(struct gremlinp_parser_buffer *buf)
     */
     while (true) {
         /*@ assert \separated(&count, &start, buf, &errno); */
-        struct gremlinp_option_item_result item = parse_option_item(buf);
+        struct gremlinp_option_item_result item = gremlinp_option_item_parse(buf);
         if (item.error != GREMLINP_OK) {
             buf->offset = start;
             result.error = item.error;

@@ -149,6 +149,21 @@ struct gremlinp_option_list_result {
 
 struct gremlinp_option_list_result		gremlinp_option_list_consume(struct gremlinp_parser_buffer *buf);
 
+/*
+ * Single "name = value" option item. Consumers iterate over an already-
+ * parsed option list span (as recorded in gremlinp_option_list_result)
+ * by rewinding a buffer to list.start + 1 (past the `[`) and calling
+ * this repeatedly, separated by `,`, until `]`.
+ */
+struct gremlinp_option_item_result {
+	const char				*name_start;
+	size_t					name_length;
+	struct gremlinp_const_parse_result	value;
+	enum gremlinp_parsing_error		error;
+};
+
+struct gremlinp_option_item_result		gremlinp_option_item_parse(struct gremlinp_parser_buffer *buf);
+
 /* ========================================================================
  * FIELD TYPE
  * ======================================================================== */
