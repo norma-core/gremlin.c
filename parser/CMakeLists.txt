@@ -59,6 +59,9 @@ set(TEST_SOURCES
 
 add_executable(parser_tests ${TEST_SOURCES})
 target_link_libraries(parser_tests gremlinp)
+target_include_directories(parser_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/tests
+)
 get_filename_component(TEST_DATA_DIR tests ABSOLUTE)
 target_compile_definitions(parser_tests PRIVATE "TEST_DATA_DIR=\"${TEST_DATA_DIR}\"")
 add_test(NAME parser_tests COMMAND parser_tests)

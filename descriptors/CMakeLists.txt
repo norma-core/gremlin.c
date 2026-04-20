@@ -77,6 +77,9 @@ set(TEST_SOURCES
 
 add_executable(descriptors_tests ${TEST_SOURCES})
 target_link_libraries(descriptors_tests gremlind)
+target_include_directories(descriptors_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/tests
+)
 get_filename_component(TEST_DATA_DIR tests ABSOLUTE)
 target_compile_definitions(descriptors_tests PRIVATE "TEST_DATA_DIR=\"${TEST_DATA_DIR}\"")
 add_test(NAME descriptors_tests COMMAND descriptors_tests)
