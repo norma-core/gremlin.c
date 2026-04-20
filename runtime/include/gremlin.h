@@ -59,11 +59,6 @@ enum gremlin_wire_type {
 	GREMLIN_WIRE_FIXED32    = 5	/* fixed32, sfixed32, float */
 };
 
-struct gremlin_tag {
-	uint32_t			field_num;
-	enum gremlin_wire_type		wire_type;
-};
-
 /*
  * Writer: buffer + capacity + bump cursor. The caller constructs one
  * pointing at a pre-sized buffer (size computed via gremlin_*_size
@@ -574,53 +569,272 @@ gremlin_fixed64_decode(const uint8_t *buf, size_t len)
 	return r;
 }
 
-/* ========================================================================
- * Tag — field number + wire type, packed into a varint.
+/* ------------------------------------------------------------------------
+ * 32-bit varint variants — dedicated implementations bounded at 5 bytes.
  *
- * Wire layout: varint of `(field_num << 3) | wire_type`. The low 3 bits
- * hold the wire type; the rest is the field number.
- *
- * Tag size is just the size of that packed varint — which in turn is
- * gremlin_varint_size(packed) with packed = (field_num << 3) | wt.
- * ======================================================================== */
+ * A uint32 fits in at most 5 varint bytes (2^35 > 2^32). These functions
+ * stop at 5 bytes during decode (OVERFLOW on a continuing 5th byte),
+ * cascade across 5 bands during size, and loop at most 5 times during
+ * encode. The 64-bit versions remain for int32 / int64 / uint64 / sint64
+ * paths where a value may need the full 10-byte encoding (protobuf
+ * sign-extends negative int32 to 10 bytes).
+ * ------------------------------------------------------------------------ */
 
-/*@ axiomatic GremlinTag {
-      // The packed 64-bit value for a (field_num, wire_type) pair.
-      // wire_type fits in 3 bits; field_num shifts up by 3.
-      logic integer tag_packed(integer field_num, integer wire_type) =
-        field_num * 8 + wire_type;
-    }
-*/
-
-/*@ requires 0 <= (integer)wt <= 5;
-    assigns  \nothing;
-    ensures  \result == varint_size(tag_packed(field_num, wt));
-    ensures  1 <= \result <= 10;
+/*@ assigns \nothing;
+    ensures  \result == varint_size(v);
+    ensures  1 <= \result <= 5;
 */
 static inline __attribute__((always_inline)) size_t
-gremlin_tag_size(uint32_t field_num, enum gremlin_wire_type wt)
+gremlin_varint32_size(uint32_t v)
 {
-	return gremlin_varint_size(((uint64_t)field_num * 8u) + (uint64_t)wt);
+	/* 5-band cascade. The uint32 upper bound (< 2^32) falls strictly
+	 * inside band 5 (< 2^35), so the final `return 5` covers every
+	 * value the cascade above didn't already dispatch. */
+	if (v < 0x80)       return 1;
+	if (v < 0x4000)     return 2;
+	if (v < 0x200000)   return 3;
+	if (v < 0x10000000) return 4;
+	return 5;
 }
 
 /*@ requires valid_writer(w);
-    requires 0 <= (integer)wt <= 5;
-    requires w->offset + varint_size(tag_packed(field_num, wt)) <= w->cap;
+    requires w->offset + varint_size(v) <= w->cap;
     assigns  w->offset,
              w->buf[\at(w->offset, Pre) ..
-                    \at(w->offset, Pre) +
-                    varint_size(tag_packed(field_num, wt)) - 1];
+                    \at(w->offset, Pre) + varint_size(v) - 1];
     ensures  valid_writer(w);
-    ensures  w->offset == \old(w->offset) + varint_size(tag_packed(field_num, wt));
+    ensures  w->offset == \old(w->offset) + varint_size(v);
+    ensures  \forall integer k;
+               0 <= k < varint_size(\old(v)) ==>
+                 w->buf[\old(w->offset) + k] ==
+                 (uint8_t)varint_byte(\old(v), k);
 */
 static inline __attribute__((always_inline)) void
-gremlin_tag_encode(struct gremlin_writer *w, uint32_t field_num, enum gremlin_wire_type wt)
+gremlin_varint32_encode(struct gremlin_writer *w, uint32_t v)
 {
-	gremlin_varint_encode(w, ((uint64_t)field_num * 8u) + (uint64_t)wt);
+	if (v < 128) {
+		/*@ assert w->offset < w->cap; */
+		w->buf[w->offset] = (uint8_t)v;
+		w->offset++;
+		return;
+	}
+
+	/*@ loop invariant w->offset + varint_size(v) ==
+	                   \at(w->offset, Pre) + varint_size(\at(v, Pre));
+	    loop invariant w->offset <= w->cap;
+	    loop invariant \at(w->offset, Pre) <= w->offset;
+	    loop invariant \forall integer j;
+	      j >= 0 ==>
+	        varint_byte(v, j) ==
+	          varint_byte(\at(v, Pre),
+	                      (w->offset - \at(w->offset, Pre)) + j);
+	    loop invariant \forall integer k;
+	      0 <= k < (w->offset - \at(w->offset, Pre)) ==>
+	        w->buf[\at(w->offset, Pre) + k] ==
+	          (uint8_t)varint_byte(\at(v, Pre), k);
+	    loop assigns v, w->offset,
+	                 w->buf[\at(w->offset, Pre) ..
+	                        \at(w->offset, Pre) + varint_size(\at(v, Pre)) - 1];
+	    loop variant v;
+	*/
+	while (v >= 128) {
+		/*@ assert w->offset < w->cap; */
+		/*@ assert varint_byte(v, 0) == 128 + v % 128; */
+		w->buf[w->offset] = (uint8_t)(128 + v % 128);
+		w->offset++;
+		/*@ assert \forall integer j; j >= 0 ==>
+		           varint_byte(v / 128, j) == varint_byte(v, j + 1); */
+		v /= 128;
+	}
+	/*@ assert w->offset < w->cap; */
+	/*@ assert varint_byte(v, 0) == v; */
+	w->buf[w->offset] = (uint8_t)v;
+	w->offset++;
 }
 
-struct gremlin_tag_decode_result {
-	struct gremlin_tag	tag;
+/* ------------------------------------------------------------------------
+ * `_at` variants — take (buf, off) by value, return new offset.
+ *
+ * Motivation: the `struct gremlin_writer *` versions above force the
+ * compiler to round-trip `w->offset` through memory between every byte
+ * written, because a store through `w->buf[]` could in principle alias
+ * `w->offset`. Even with `restrict`, the aliasing can't be proven
+ * through a struct layout. Keeping the offset as a function-local
+ * value that flows through a register is ~3× fewer mem ops per byte
+ * in the generated encoder.
+ *
+ * Contracts mirror the `struct writer *` versions — same byte-level
+ * `varint_byte` / `le32_value` / `le64_value` postconditions, so WP
+ * obligations chain through generated code identically.
+ * ------------------------------------------------------------------------ */
+
+/*@ requires off + varint_size(v) <= 0x7fffffffffffffff;
+    requires \valid(buf + (off .. off + varint_size(v) - 1));
+    assigns  buf[off .. off + varint_size(v) - 1];
+    ensures  \result == off + varint_size(v);
+    ensures  \forall integer k;
+               0 <= k < varint_size(\old(v)) ==>
+                 buf[off + k] == (uint8_t)varint_byte(\old(v), k);
+*/
+static inline __attribute__((always_inline)) size_t
+gremlin_varint_encode_at(uint8_t * __restrict__ buf, size_t off, uint64_t v)
+{
+	/* Fast path — same single-byte shortcut as gremlin_varint_encode. */
+	if (v < 128) {
+		/*@ assert varint_byte(v, 0) == v; */
+		buf[off] = (uint8_t)v;
+		return off + 1;
+	}
+
+	/*@ loop invariant off + varint_size(v) ==
+	                   \at(off, Pre) + varint_size(\at(v, Pre));
+	    loop invariant \at(off, Pre) <= off;
+	    loop invariant \forall integer j;
+	      j >= 0 ==>
+	        varint_byte(v, j) ==
+	          varint_byte(\at(v, Pre),
+	                      (off - \at(off, Pre)) + j);
+	    loop invariant \forall integer k;
+	      0 <= k < (off - \at(off, Pre)) ==>
+	        buf[\at(off, Pre) + k] ==
+	          (uint8_t)varint_byte(\at(v, Pre), k);
+	    loop assigns v, off,
+	                 buf[\at(off, Pre) ..
+	                     \at(off, Pre) + varint_size(\at(v, Pre)) - 1];
+	    loop variant v;
+	*/
+	while (v >= 128) {
+		/*@ assert varint_byte(v, 0) == 128 + v % 128; */
+		buf[off] = (uint8_t)(128 + v % 128);
+		off++;
+		/*@ assert \forall integer j; j >= 0 ==>
+		           varint_byte(v / 128, j) == varint_byte(v, j + 1); */
+		v /= 128;
+	}
+	/*@ assert varint_byte(v, 0) == v; */
+	buf[off] = (uint8_t)v;
+	return off + 1;
+}
+
+/*@ requires off + varint_size(v) <= 0x7fffffffffffffff;
+    requires \valid(buf + (off .. off + varint_size(v) - 1));
+    assigns  buf[off .. off + varint_size(v) - 1];
+    ensures  \result == off + varint_size(v);
+    ensures  \forall integer k;
+               0 <= k < varint_size(\old(v)) ==>
+                 buf[off + k] == (uint8_t)varint_byte(\old(v), k);
+*/
+static inline __attribute__((always_inline)) size_t
+gremlin_varint32_encode_at(uint8_t * __restrict__ buf, size_t off, uint32_t v)
+{
+	if (v < 128) {
+		/*@ assert varint_byte(v, 0) == v; */
+		buf[off] = (uint8_t)v;
+		return off + 1;
+	}
+
+	/*@ loop invariant off + varint_size(v) ==
+	                   \at(off, Pre) + varint_size(\at(v, Pre));
+	    loop invariant \at(off, Pre) <= off;
+	    loop invariant \forall integer j;
+	      j >= 0 ==>
+	        varint_byte(v, j) ==
+	          varint_byte(\at(v, Pre),
+	                      (off - \at(off, Pre)) + j);
+	    loop invariant \forall integer k;
+	      0 <= k < (off - \at(off, Pre)) ==>
+	        buf[\at(off, Pre) + k] ==
+	          (uint8_t)varint_byte(\at(v, Pre), k);
+	    loop assigns v, off,
+	                 buf[\at(off, Pre) ..
+	                     \at(off, Pre) + varint_size(\at(v, Pre)) - 1];
+	    loop variant v;
+	*/
+	while (v >= 128) {
+		/*@ assert varint_byte(v, 0) == 128 + v % 128; */
+		buf[off] = (uint8_t)(128 + v % 128);
+		off++;
+		/*@ assert \forall integer j; j >= 0 ==>
+		           varint_byte(v / 128, j) == varint_byte(v, j + 1); */
+		v /= 128;
+	}
+	/*@ assert varint_byte(v, 0) == v; */
+	buf[off] = (uint8_t)v;
+	return off + 1;
+}
+
+/*@ requires off + 4 <= 0x7fffffffffffffff;
+    requires \valid(buf + (off .. off + 3));
+    assigns  buf[off .. off + 3];
+    ensures  \result == off + 4;
+    ensures  buf[off + 0] == (uint8_t)\old(v);
+    ensures  buf[off + 1] == (uint8_t)(\old(v) >> 8);
+    ensures  buf[off + 2] == (uint8_t)(\old(v) >> 16);
+    ensures  buf[off + 3] == (uint8_t)(\old(v) >> 24);
+*/
+static inline __attribute__((always_inline)) size_t
+gremlin_fixed32_encode_at(uint8_t * __restrict__ buf, size_t off, uint32_t v)
+{
+	buf[off + 0] = (uint8_t)(v      );
+	buf[off + 1] = (uint8_t)(v >>  8);
+	buf[off + 2] = (uint8_t)(v >> 16);
+	buf[off + 3] = (uint8_t)(v >> 24);
+	return off + 4;
+}
+
+/*@ requires off + 8 <= 0x7fffffffffffffff;
+    requires \valid(buf + (off .. off + 7));
+    assigns  buf[off .. off + 7];
+    ensures  \result == off + 8;
+    ensures  buf[off + 0] == (uint8_t)\old(v);
+    ensures  buf[off + 1] == (uint8_t)(\old(v) >> 8);
+    ensures  buf[off + 2] == (uint8_t)(\old(v) >> 16);
+    ensures  buf[off + 3] == (uint8_t)(\old(v) >> 24);
+    ensures  buf[off + 4] == (uint8_t)(\old(v) >> 32);
+    ensures  buf[off + 5] == (uint8_t)(\old(v) >> 40);
+    ensures  buf[off + 6] == (uint8_t)(\old(v) >> 48);
+    ensures  buf[off + 7] == (uint8_t)(\old(v) >> 56);
+*/
+static inline __attribute__((always_inline)) size_t
+gremlin_fixed64_encode_at(uint8_t * __restrict__ buf, size_t off, uint64_t v)
+{
+	buf[off + 0] = (uint8_t)(v      );
+	buf[off + 1] = (uint8_t)(v >>  8);
+	buf[off + 2] = (uint8_t)(v >> 16);
+	buf[off + 3] = (uint8_t)(v >> 24);
+	buf[off + 4] = (uint8_t)(v >> 32);
+	buf[off + 5] = (uint8_t)(v >> 40);
+	buf[off + 6] = (uint8_t)(v >> 48);
+	buf[off + 7] = (uint8_t)(v >> 56);
+	return off + 8;
+}
+
+/*@ requires off + src_len <= 0x7fffffffffffffff;
+    requires src_len == 0 || \valid_read(src + (0 .. src_len - 1));
+    requires src_len == 0 || \valid(buf + (off .. off + src_len - 1));
+    assigns  buf[off .. off + src_len - 1];
+    ensures  \result == off + src_len;
+*/
+static inline __attribute__((always_inline)) size_t
+gremlin_write_bytes_at(uint8_t * __restrict__ buf, size_t off,
+                       const uint8_t * __restrict__ src, size_t src_len)
+{
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__FRAMAC__)
+	__builtin_memcpy(buf + off, src, src_len);
+	return off + src_len;
+#else
+	/*@ loop invariant 0 <= i <= src_len;
+	    loop invariant off + src_len <= 0x7fffffffffffffff;
+	    loop assigns i, buf[off .. off + src_len - 1];
+	    loop variant src_len - i;
+	*/
+	for (size_t i = 0; i < src_len; i++) buf[off + i] = src[i];
+	return off + src_len;
+#endif
+}
+
+struct gremlin_varint32_decode_result {
+	uint32_t		value;
 	size_t			consumed;
 	enum gremlin_error	error;
 };
@@ -629,22 +843,135 @@ struct gremlin_tag_decode_result {
     assigns  \nothing;
     ensures  \result.error == GREMLIN_OK ||
              \result.error == GREMLIN_ERROR_TRUNCATED ||
-             \result.error == GREMLIN_ERROR_OVERFLOW ||
-             \result.error == GREMLIN_ERROR_INVALID_WIRE_TYPE ||
-             \result.error == GREMLIN_ERROR_INVALID_FIELD_NUM;
+             \result.error == GREMLIN_ERROR_OVERFLOW;
     ensures  \result.error == GREMLIN_OK ==>
-               1 <= \result.consumed <= 10 &&
-               \result.consumed <= len &&
-               0 <= (integer)\result.tag.wire_type <= 5 &&
-               1 <= \result.tag.field_num <= GREMLIN_MAX_FIELD_NUM;
-    ensures  \result.error != GREMLIN_OK ==> \result.consumed == 0;
+               1 <= \result.consumed <= 5 &&
+               \result.consumed <= len;
+    ensures  \result.error == GREMLIN_ERROR_TRUNCATED ==> len < 5;
+    ensures  \result.error == GREMLIN_ERROR_OVERFLOW ==> len >= 5;
+    ensures  \result.error != GREMLIN_OK ==>
+               \result.consumed == 0 && \result.value == 0;
 */
-static inline __attribute__((always_inline)) struct gremlin_tag_decode_result
-gremlin_tag_decode(const uint8_t *buf, size_t len)
+static inline __attribute__((always_inline)) struct gremlin_varint32_decode_result
+gremlin_varint32_decode(const uint8_t *buf, size_t len)
 {
-	struct gremlin_tag_decode_result r;
-	r.tag.field_num = 0;
-	r.tag.wire_type = GREMLIN_WIRE_VARINT;
+	struct gremlin_varint32_decode_result r;
+	r.value = 0;
+	r.consumed = 0;
+	r.error = GREMLIN_OK;
+
+	if (len >= 1 && buf[0] < 128u) {
+		r.value = buf[0];
+		r.consumed = 1;
+		return r;
+	}
+
+	uint32_t value = 0;
+	size_t   i = 0;
+	unsigned shift = 0;
+
+	/*@ loop invariant 0 <= i <= 5;
+	    loop invariant i <= len;
+	    loop invariant shift == 7 * i;
+	    loop assigns i, shift, value;
+	    loop variant 5 - i;
+	*/
+	while (i < len && i < 5) {
+		/*@ assert shift <= 28; */
+		uint8_t b = buf[i];
+		value |= ((uint32_t)(b & 0x7Fu)) << shift;
+		i++;
+		if ((b & 0x80u) == 0) {
+			r.value = value;
+			r.consumed = i;
+			return r;
+		}
+		shift += 7;
+	}
+
+	r.error = (i == 5) ? GREMLIN_ERROR_OVERFLOW : GREMLIN_ERROR_TRUNCATED;
+	return r;
+}
+
+/* ========================================================================
+ * Bytes — length-prefixed raw byte sequences.
+ *
+ * Used for protobuf `string`, `bytes`, and embedded `message` wire
+ * formats (all wire type LEN_PREFIX). On the write side, callers pass a
+ * raw source + length; on the read side they get back a zero-copy slice
+ * of the decode buffer.
+ *
+ * `struct gremlin_bytes` is the universal ptr+len pair generated code
+ * uses for string/bytes fields — in writer structs, reader caches, and
+ * getter return values.
+ * ======================================================================== */
+
+struct gremlin_bytes {
+	const uint8_t	*data;
+	size_t		 len;
+};
+
+/*@ requires valid_writer(w);
+    requires src_len == 0 || \valid_read(src + (0 .. src_len - 1));
+    requires w->offset + src_len <= w->cap;
+    assigns  w->offset,
+             w->buf[\at(w->offset, Pre) .. \at(w->offset, Pre) + src_len - 1];
+    ensures  valid_writer(w);
+    ensures  w->offset == \old(w->offset) + src_len;
+    // Byte-level correctness is part of the trust base (documented below)
+    // — WP can't chain the forall-over-array invariant through Alt-Ergo
+    // reliably. The loop body is one obvious store per index; hand proof
+    // is three lines. Same discipline as clz_matches_varint_size.
+*/
+static inline __attribute__((always_inline)) void
+gremlin_write_bytes(struct gremlin_writer *w, const uint8_t *src, size_t src_len)
+{
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__FRAMAC__)
+	/* Real compiler: `__builtin_memcpy` lowers to SSE/AVX block copies
+	 * (or `rep movsb` on supporting CPUs) at -O3, matching what zig's
+	 * `@memcpy` emits. The byte-loop fallback below stays as the
+	 * verification variant — WP walks its loop invariants cleanly,
+	 * but a plain memcpy call is opaque to WP without a contract. */
+	__builtin_memcpy(w->buf + w->offset, src, src_len);
+	w->offset += src_len;
+#else
+	/*@ loop invariant 0 <= i <= src_len;
+	    loop invariant w->offset == \at(w->offset, Pre) + i;
+	    loop invariant w->offset <= w->cap;
+	    loop assigns i, w->offset,
+	                 w->buf[\at(w->offset, Pre) .. \at(w->offset, Pre) + src_len - 1];
+	    loop variant src_len - i;
+	*/
+	for (size_t i = 0; i < src_len; i++) {
+		w->buf[w->offset] = src[i];
+		w->offset++;
+	}
+#endif
+}
+
+struct gremlin_bytes_decode_result {
+	struct gremlin_bytes	bytes;
+	size_t			consumed;
+	enum gremlin_error	error;
+};
+
+/*@ requires len == 0 || \valid_read(buf + (0 .. len - 1));
+    assigns  \nothing;
+    ensures  \result.error == GREMLIN_OK ||
+             \result.error == GREMLIN_ERROR_TRUNCATED ||
+             \result.error == GREMLIN_ERROR_OVERFLOW;
+    ensures  \result.error == GREMLIN_OK ==> \result.consumed <= len;
+    ensures  \result.error != GREMLIN_OK ==>
+               \result.consumed == 0 &&
+               \result.bytes.data == \null &&
+               \result.bytes.len == 0;
+*/
+static inline __attribute__((always_inline)) struct gremlin_bytes_decode_result
+gremlin_bytes_decode(const uint8_t *buf, size_t len)
+{
+	struct gremlin_bytes_decode_result r;
+	r.bytes.data = NULL;
+	r.bytes.len = 0;
 	r.consumed = 0;
 	r.error = GREMLIN_OK;
 
@@ -653,30 +980,171 @@ gremlin_tag_decode(const uint8_t *buf, size_t len)
 		r.error = d.error;
 		return r;
 	}
-
-	uint64_t raw = d.value;
-	/* Arithmetic forms of `raw & 0x7` and `raw >> 3` — SMT-friendlier
-	 * than the bitwise equivalents. Same asm on unsigned. */
-	unsigned wt_raw = (unsigned)(raw % 8u);
-	/*@ assert 0 <= wt_raw <= 7; */
-	if (wt_raw == 6u || wt_raw == 7u) {
-		r.error = GREMLIN_ERROR_INVALID_WIRE_TYPE;
+	/* d.consumed <= len from varint_decode contract. */
+	if (d.value > (uint64_t)(len - d.consumed)) {
+		r.error = GREMLIN_ERROR_TRUNCATED;
 		return r;
 	}
-	/*@ assert 0 <= wt_raw <= 5; */
+	r.bytes.data = buf + d.consumed;
+	r.bytes.len = (size_t)d.value;
+	r.consumed = d.consumed + (size_t)d.value;
+	return r;
+}
 
-	uint64_t fn_raw = raw / 8u;
-	/* Reject 0 (invalid per spec) and anything above the 2^29 - 1 cap.
-	 * Silent truncation to uint32_t would map huge values to small
-	 * field numbers — a potentially exploitable aliasing. */
-	if (fn_raw == 0 || fn_raw > (uint64_t)GREMLIN_MAX_FIELD_NUM) {
-		r.error = GREMLIN_ERROR_INVALID_FIELD_NUM;
+/* ========================================================================
+ * Skip — advance past a field's data given its wire type.
+ *
+ * Caller has already consumed the tag; `buf` points at the start of the
+ * field's payload. On success, `consumed` is how many bytes to skip to
+ * reach the next tag. Used by readers for forward compatibility (unknown
+ * tags → skip the payload) and for skipping fields the caller doesn't
+ * care about.
+ *
+ *   VARINT     → decode one varint, return its length.
+ *   FIXED32    → 4 bytes (TRUNCATED if len < 4).
+ *   FIXED64    → 8 bytes (TRUNCATED if len < 8).
+ *   LEN_PREFIX → one varint length L, then L bytes.
+ *   SGROUP     → iterate (tag, payload) pairs until a matching EGROUP.
+ *                Nested groups tracked with a depth counter. Malformed
+ *                input (EGROUP without SGROUP, tag error, payload error)
+ *                propagates as TRUNCATED/OVERFLOW/INVALID_WIRE_TYPE.
+ *   EGROUP     → rejected as INVALID_WIRE_TYPE (can't start with a
+ *                closing marker — EGROUPs are only valid *inside* a
+ *                group-skip loop, not as the outermost wire_type).
+ * ======================================================================== */
+
+struct gremlin_skip_result {
+	size_t			consumed;
+	enum gremlin_error	error;
+};
+
+/*@ requires len == 0 || \valid_read(buf + (0 .. len - 1));
+    requires 0 <= (integer)wt <= 5;
+    assigns  \nothing;
+    ensures  \result.error == GREMLIN_OK ||
+             \result.error == GREMLIN_ERROR_TRUNCATED ||
+             \result.error == GREMLIN_ERROR_OVERFLOW ||
+             \result.error == GREMLIN_ERROR_INVALID_WIRE_TYPE ||
+             \result.error == GREMLIN_ERROR_INVALID_FIELD_NUM;
+    ensures  \result.error == GREMLIN_OK ==> \result.consumed <= len;
+    ensures  \result.error != GREMLIN_OK ==> \result.consumed == 0;
+*/
+static inline __attribute__((always_inline)) struct gremlin_skip_result
+gremlin_skip_data(const uint8_t *buf, size_t len, enum gremlin_wire_type wt)
+{
+	struct gremlin_skip_result r = { 0, GREMLIN_OK };
+
+	if (wt == GREMLIN_WIRE_VARINT) {
+		struct gremlin_varint_decode_result d = gremlin_varint_decode(buf, len);
+		if (d.error != GREMLIN_OK) { r.error = d.error; return r; }
+		r.consumed = d.consumed;
+		return r;
+	}
+	if (wt == GREMLIN_WIRE_FIXED32) {
+		if (len < 4) { r.error = GREMLIN_ERROR_TRUNCATED; return r; }
+		r.consumed = 4;
+		return r;
+	}
+	if (wt == GREMLIN_WIRE_FIXED64) {
+		if (len < 8) { r.error = GREMLIN_ERROR_TRUNCATED; return r; }
+		r.consumed = 8;
+		return r;
+	}
+	if (wt == GREMLIN_WIRE_LEN_PREFIX) {
+		struct gremlin_varint_decode_result d = gremlin_varint_decode(buf, len);
+		if (d.error != GREMLIN_OK) { r.error = d.error; return r; }
+		/* d.consumed <= len is guaranteed by decode contract. */
+		if (d.value > (uint64_t)(len - d.consumed)) {
+			r.error = GREMLIN_ERROR_TRUNCATED;
+			return r;
+		}
+		r.consumed = d.consumed + (size_t)d.value;
+		return r;
+	}
+	if (wt == GREMLIN_WIRE_SGROUP) {
+		/* Iterate (tag, payload) pairs with a depth counter. Start at
+		 * depth 1 — the outer SGROUP tag was consumed by caller. Each
+		 * nested SGROUP bumps depth; each EGROUP drops it; we're done
+		 * when depth hits 0. */
+		unsigned depth = 1;
+		size_t   offset = 0;
+
+		/*@ loop invariant 0 <= offset <= len;
+		    loop invariant depth >= 0;
+		    // r is touched only on error-return paths that exit the
+		    // loop; within any continuing iteration, it stays at its
+		    // initial value. Pinning this makes the outer ensures
+		    // clauses dischargeable.
+		    loop invariant r.error == GREMLIN_OK;
+		    loop invariant r.consumed == 0;
+		    loop assigns offset, depth, r;
+		    loop variant len - offset;
+		*/
+		while (depth > 0) {
+			/* Read the tag as a raw varint and extract wire_type
+			 * inline — same approach generated code uses. Avoids a
+			 * dedicated tag decoder. */
+			struct gremlin_varint_decode_result t =
+				gremlin_varint_decode(buf + offset, len - offset);
+			if (t.error != GREMLIN_OK) {
+				r.error = t.error;
+				r.consumed = 0;
+				return r;
+			}
+			offset += t.consumed;
+
+			unsigned wt = (unsigned)(t.value % 8u);
+			if (wt == 6u || wt == 7u) {
+				r.error = GREMLIN_ERROR_INVALID_WIRE_TYPE;
+				r.consumed = 0;
+				return r;
+			}
+
+			if (wt == GREMLIN_WIRE_SGROUP) {
+				depth++;
+				continue;
+			}
+			if (wt == GREMLIN_WIRE_EGROUP) {
+				depth--;
+				continue;
+			}
+
+			/* Non-group field inside the group — skip its payload
+			 * inline (same four cases as above). Recursion would be
+			 * cleaner but complicates WP termination; the duplication
+			 * is small and obviously bounded. */
+			size_t remain = len - offset;
+			if (wt == GREMLIN_WIRE_VARINT) {
+				struct gremlin_varint_decode_result d =
+					gremlin_varint_decode(buf + offset, remain);
+				if (d.error != GREMLIN_OK) { r.error = d.error; r.consumed = 0; return r; }
+				offset += d.consumed;
+			} else if (wt == GREMLIN_WIRE_FIXED32) {
+				if (remain < 4) { r.error = GREMLIN_ERROR_TRUNCATED; r.consumed = 0; return r; }
+				offset += 4;
+			} else if (wt == GREMLIN_WIRE_FIXED64) {
+				if (remain < 8) { r.error = GREMLIN_ERROR_TRUNCATED; r.consumed = 0; return r; }
+				offset += 8;
+			} else {
+				/* LEN_PREFIX. */
+				struct gremlin_varint_decode_result d =
+					gremlin_varint_decode(buf + offset, remain);
+				if (d.error != GREMLIN_OK) { r.error = d.error; r.consumed = 0; return r; }
+				if (d.value > (uint64_t)(remain - d.consumed)) {
+					r.error = GREMLIN_ERROR_TRUNCATED;
+					r.consumed = 0;
+					return r;
+				}
+				offset += d.consumed + (size_t)d.value;
+			}
+		}
+
+		r.consumed = offset;
 		return r;
 	}
 
-	r.tag.wire_type = (enum gremlin_wire_type)wt_raw;
-	r.tag.field_num = (uint32_t)fn_raw;
-	r.consumed = d.consumed;
+	/* EGROUP (wt == 4) as outer wire type is a protocol error. */
+	r.error = GREMLIN_ERROR_INVALID_WIRE_TYPE;
 	return r;
 }
 

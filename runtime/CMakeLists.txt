@@ -21,18 +21,15 @@ target_include_directories(gremlin_runtime INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
-# Microbenchmarks — not part of verification, just performance measurement.
-add_executable(bench bench/bench.c)
-target_link_libraries(bench gremlin_runtime)
-# Benchmarks deserve -O2; verification & tests run at default optimisation.
-target_compile_options(bench PRIVATE -O2)
-
 # Runtime sanity for things WP can't verify — specifically, the union
 # type-punning in gremlin_f32/f64_* maps to IEEE-754 bits. ACSL proves
 # memory safety; this test proves the bit pattern.
 add_executable(float_test tests/float_test.c)
 target_link_libraries(float_test gremlin_runtime)
 target_link_libraries(float_test m)
+target_include_directories(float_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/tests
+)
 enable_testing()
 add_test(NAME float_test COMMAND float_test)
 
@@ -65,7 +62,7 @@ if(FRAMAC)
         -cpp-extra-args=-I${CMAKE_CURRENT_SOURCE_DIR}/include
     )
 
-    set(RUNTIME_WP_FCTS gremlin_varint_size,gremlin_varint_size_cascade,gremlin_varint_size_clz,gremlin_varint_decode,gremlin_writer_init,gremlin_varint_encode,gremlin_fixed32_size,gremlin_fixed32_encode,gremlin_fixed32_decode,gremlin_fixed64_size,gremlin_fixed64_encode,gremlin_fixed64_decode,gremlin_tag_size,gremlin_tag_encode,gremlin_tag_decode,gremlin_zigzag32,gremlin_unzigzag32,gremlin_zigzag64,gremlin_unzigzag64,gremlin_f32_bits,gremlin_f32_from_bits,gremlin_f64_bits,gremlin_f64_from_bits)
+    set(RUNTIME_WP_FCTS gremlin_varint_size,gremlin_varint_size_cascade,gremlin_varint_size_clz,gremlin_varint_decode,gremlin_writer_init,gremlin_varint_encode,gremlin_varint32_size,gremlin_varint32_encode,gremlin_varint32_decode,gremlin_fixed32_size,gremlin_fixed32_encode,gremlin_fixed32_decode,gremlin_fixed64_size,gremlin_fixed64_encode,gremlin_fixed64_decode,gremlin_skip_data,gremlin_write_bytes,gremlin_bytes_decode,gremlin_zigzag32,gremlin_unzigzag32,gremlin_zigzag64,gremlin_unzigzag64,gremlin_f32_bits,gremlin_f32_from_bits,gremlin_f64_bits,gremlin_f64_from_bits,gremlin_varint_encode_at,gremlin_varint32_encode_at,gremlin_fixed32_encode_at,gremlin_fixed64_encode_at,gremlin_write_bytes_at)
 
     add_custom_target(verify-runtime
         COMMAND ${FRAMAC} ${WP_BASE_FLAGS} -wp-fct ${RUNTIME_WP_FCTS} tests/verify.c
