@@ -51,7 +51,9 @@ emit_file(struct gremlind_arena *arena,
 		err = gremlinc_write_cstr(w, "#include <string.h>\n");
 		if (err) goto out;
 	}
-	err = gremlinc_write_cstr(w, "#include \"gremlin.h\"\n");
+	err = gremlinc_write_cstr(w,
+		"#include <stdbool.h>\n"
+		"#include \"gremlin.h\"\n");
 	if (err) goto out;
 
 	/* Pull in every imported file's generated header so types it

@@ -531,7 +531,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * `_size(const X *m)` API while mutating the cache. UB for
 	 * truly const-storage protos; in practice messages are built
 	 * mutable then encoded. */
-	W("__attribute__((noinline)) static size_t\n");
+	W("__attribute__((noinline, unused)) static size_t\n");
 	W(size_fn); W("(const "); W(tname); W(" *m)\n{\n");
 	W("\tsize_t s = 0;\n");
 	if (m->fields.count == 0) {
@@ -562,7 +562,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * reloads between consecutive writes. */
 	/* Flat encode body — same rationale as `_size`: per-field helper
 	 * split cost ~7% on bench even with always_inline. */
-	W("static size_t\n");
+	W("__attribute__((unused)) static size_t\n");
 	W(tname); W("_encode_at(const "); W(tname);
 	W(" *m, uint8_t * __restrict__ _buf, size_t _off)\n{\n");
 	if (m->fields.count == 0) {
@@ -577,7 +577,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	}
 	W("\treturn _off;\n}\n\n");
 
-	W("static void\n");
+	W("__attribute__((unused)) static void\n");
 	W(encode_fn); W("(const "); W(tname); W(" *m, struct gremlin_writer *w)\n{\n");
 	W("\tw->offset = "); W(tname); W("_encode_at(m, w->buf, w->offset);\n");
 	W("}\n\n");

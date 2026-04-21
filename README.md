@@ -34,12 +34,40 @@ primitives small enough to verify formally.
 
 ## 📑 Table of contents
 
+- [Example](#-example)
 - [Benchmarks](#-benchmarks)
 - [Subprojects](#-subprojects)
 - [Quick start](#-quick-start)
 - [Formal verification](#-formal-verification)
 - [Layout](#-layout)
 - [Related projects](#-related-projects)
+
+## 🚀 Example
+
+A complete consumer project lives in [`example/`](example/README.md) —
+a self-contained `CMakeLists.txt` + `.proto` + `main.c` that pretends
+gremlin.c isn't locally installed. It pulls the library from GitHub
+with `FetchContent`, runs `gremlinc_generate()` to compile the proto,
+and walks a `Person` message through encode + decode.
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(gremlin
+    GIT_REPOSITORY https://github.com/norma-core/gremlin.c.git
+    GIT_TAG        main)
+FetchContent_MakeAvailable(gremlin)
+
+gremlinc_generate(
+    TARGET       my_protos
+    IMPORTS_ROOT ${CMAKE_SOURCE_DIR}/protos
+    PROTOS       foo.proto nested/bar.proto)
+
+target_link_libraries(my_app PRIVATE my_protos)
+```
+
+No `protoc`, no submodules, no pre-installed binaries — a plain
+`cmake .. && make` from a fresh clone brings everything up. See
+[`example/`](example/) for the full walkthrough.
 
 ## 📊 Benchmarks
 

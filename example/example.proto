@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package example;
+
+enum Role {
+    GUEST = 0;
+    USER  = 1;
+    ADMIN = 2;
+}
+
+message Address {
+    string city    = 1;
+    string country = 2;
+    int32  zip     = 3;
+}
+
+message Person {
+    string  name    = 1;
+    int32   age     = 2;
+    Role    role    = 3;
+    Address address = 4;
+    repeated string tags = 5;
+}
