@@ -27,28 +27,32 @@ fields, maps, and unknown-field skipping.
 
 ## Verification
 
-The proof surface relevant to protobuf users is the wire runtime:
-[`runtime/include/gremlin.h`](runtime/include/gremlin.h). These are the
-functions generated message code calls for sizing, encoding, decoding,
-and skipping fields.
+Formal verification is a machine-checked proof about code behavior.
+Instead of running examples and hoping they cover the interesting cases,
+the C functions are annotated with ACSL contracts and Frama-C WP proves
+that the implementation satisfies those contracts for all inputs allowed
+by the preconditions.
 
-The target is [`verify-runtime`](runtime/CMakeLists.txt). It runs
-Frama-C WP over [`runtime/tests/verify.c`](runtime/tests/verify.c),
-which references the static-inline runtime functions so WP verifies
-their bodies.
+This is useful for the protobuf wire runtime because the important bugs
+are low-level and easy to miss with tests: out-of-bounds reads or
+writes, offset arithmetic overflow, non-canonical varint bytes,
+incorrect fixed32/fixed64 layout, or malformed input that should return
+a defined error. Tests still exist, but the proof gives stronger
+coverage for these small shared primitives than any practical test
+corpus can.
+
+The main proof target is [`verify-runtime`](runtime/CMakeLists.txt). It
+runs Frama-C WP over [`runtime/include/gremlin.h`](runtime/include/gremlin.h)
+through [`runtime/tests/verify.c`](runtime/tests/verify.c), which
+references the static-inline functions so WP checks their bodies.
 
 Current runtime proof: `719 / 719` WP obligations. The exact function
-set is `RUNTIME_WP_FCTS` in [`runtime/CMakeLists.txt`](runtime/CMakeLists.txt).
-It covers the functions generated code uses: writer setup, varint/fixed
-size helpers, `_encode_at` writers, varint/fixed/bytes decoders,
-`gremlin_skip_data`, zigzag conversions, and float/double bit casts.
+set is `RUNTIME_WP_FCTS` in [`runtime/CMakeLists.txt`](runtime/CMakeLists.txt):
+writer setup, varint/fixed size helpers, `_encode_at` writers,
+varint/fixed/bytes decoders, `gremlin_skip_data`, zigzag conversions,
+and float/double bit casts.
 
-For those functions WP proves memory safety, bounded offset arithmetic,
-no out-of-bounds buffer access, exact fixed-width byte layout, canonical
-varint byte layout, and decode handling for truncated or overflowing
-inputs.
-
-Run it from the build directory:
+Run from the build directory:
 
 ```bash
 cmake --build . --target verify-runtime

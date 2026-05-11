@@ -86,12 +86,13 @@ main(void)
 		printf("    zip:  %d\n", example_Address_reader_get_zip(&addr_r));
 	}
 
-	printf("  tags (%zu):\n", example_Person_reader_tags_count(&r));
+	size_t tag_count = example_Person_reader_tags_count(&r);
+	printf("  tags (%zu):\n", tag_count);
 	example_Person_reader_tags_iter it = example_Person_reader_tags_begin(&r);
-	for (;;) {
+	for (size_t i = 0; i < tag_count; i++) {
 		struct gremlin_bytes tag;
 		err = example_Person_reader_tags_next(&it, &tag);
-		if (err != GREMLIN_OK || tag.len == 0) break;
+		if (err != GREMLIN_OK) break;
 		print_bytes("   ", tag);
 	}
 
