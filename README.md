@@ -1,54 +1,65 @@
-# 🧟 gremlin.c — protobuf in pure, formally verified C99
+# gremlin.c
 
-![version](https://img.shields.io/badge/version-0.1.0--dev-orange)
-![status](https://img.shields.io/badge/status-active%20development-yellow)
-![language](https://img.shields.io/badge/C-C99-blue)
-![deps](https://img.shields.io/badge/dependencies-0-brightgreen)
-![verified](https://img.shields.io/badge/Frama--C%20WP-8440%2F8440-brightgreen)
+`gremlin.c` is a C99 protobuf implementation with the compiler, code
+generator, and wire runtime in this repository. It does not call
+`protoc`, does not link third-party libraries, and generated code writes
+to caller-owned buffers.
 
-> 🚧 **Active development.** APIs, codegen output, and verification
-> boundaries are all still moving. Pin a commit if you depend on it.
+The project is still pre-1.0. APIs and generated header shapes may
+change; pin a commit if you depend on it.
 
-`gremlin.c` is **pure C99 with zero dependencies** — a protobuf
-implementation with no `protoc` invocation, no third-party libraries,
-no generated-code allocations, and no libc calls beyond `memcpy` /
-`memcmp` in the hot paths. Every line it runs is in this repo, built
-from a plain C99 compiler and CMake ≥ 3.10.
+## What You Get
 
-It's a port of [**gremlin.zig**](https://github.com/octopus-foundation/gremlin.zig)
-and keeps the same encode / decode shape, the same benchmark corpus,
-and the same idea: parse once, emit tight codegen, keep the runtime
-primitives small enough to verify formally.
+- `gremlinc-gen`: a CLI and CMake helper that turn `.proto` files into
+  C headers.
+- `gremlin.h`: a header-only protobuf wire runtime used by generated
+  code.
+- Lazy readers over caller-owned buffers. Strings, bytes, and nested
+  messages are zero-copy views.
+- Two-pass encoding: generated `_size()` computes the exact byte count,
+  then generated `_encode()` fills a `struct gremlin_writer`.
+- In-tree parser and descriptor resolver, so consumers need only a C99
+  compiler and CMake.
 
-**What "zero dependencies" means here:**
-- 🛠️ No `protoc`. The parser, descriptor pool, and code generator
-  are all in-tree (see [subprojects](#-subprojects) below).
-- 📚 No third-party libraries. Just C standard library — and the
-  generated code only touches `<stdint.h>`, `<stddef.h>`, plus
-  `<math.h>` / `<string.h>` *if* the proto actually needs them
-  (conditionally included by the codegen, never by default).
-- 🧱 No hidden `malloc` in generated code. Writer buffers are
-  caller-owned; readers are zero-copy views over caller memory.
-- 🏗️ No build-time dependencies beyond a C99 compiler + CMake. No
-  Python, no configure script, no fetched packages.
+Supported generated-field families include scalar numeric fields,
+strings/bytes, enums, nested messages, repeated fields, packed repeated
+fields, maps, and unknown-field skipping.
 
-## 📑 Table of contents
+## Verification
 
-- [Example](#-example)
-- [Benchmarks](#-benchmarks)
-- [Subprojects](#-subprojects)
-- [Quick start](#-quick-start)
-- [Formal verification](#-formal-verification)
-- [Layout](#-layout)
-- [Related projects](#-related-projects)
+The proof surface relevant to protobuf users is the wire runtime:
+[`runtime/include/gremlin.h`](runtime/include/gremlin.h). These are the
+functions generated message code calls for sizing, encoding, decoding,
+and skipping fields.
 
-## 🚀 Example
+The target is [`verify-runtime`](runtime/CMakeLists.txt). It runs
+Frama-C WP over [`runtime/tests/verify.c`](runtime/tests/verify.c),
+which references the static-inline runtime functions so WP verifies
+their bodies.
 
-A complete consumer project lives in [`example/`](example/README.md) —
-a self-contained `CMakeLists.txt` + `.proto` + `main.c` that pretends
-gremlin.c isn't locally installed. It pulls the library from GitHub
-with `FetchContent`, runs `gremlinc_generate()` to compile the proto,
-and walks a `Person` message through encode + decode.
+Current runtime proof: `719 / 719` WP obligations. The exact function
+set is `RUNTIME_WP_FCTS` in [`runtime/CMakeLists.txt`](runtime/CMakeLists.txt).
+It covers the functions generated code uses: writer setup, varint/fixed
+size helpers, `_encode_at` writers, varint/fixed/bytes decoders,
+`gremlin_skip_data`, zigzag conversions, and float/double bit casts.
+
+For those functions WP proves memory safety, bounded offset arithmetic,
+no out-of-bounds buffer access, exact fixed-width byte layout, canonical
+varint byte layout, and decode handling for truncated or overflowing
+inputs.
+
+Run it from the build directory:
+
+```bash
+cmake --build . --target verify-runtime
+```
+
+The repository also contains other proofs, such as descriptor arena
+allocation and selected code-generator helpers. Parser proofs are useful
+for the compiler itself, but they are not the proof surface generated
+protobuf code relies on at runtime.
+
+## Quick Start
 
 ```cmake
 include(FetchContent)
@@ -62,93 +73,15 @@ gremlinc_generate(
     IMPORTS_ROOT ${CMAKE_SOURCE_DIR}/protos
     PROTOS       foo.proto nested/bar.proto)
 
+add_executable(my_app main.c)
 target_link_libraries(my_app PRIVATE my_protos)
 ```
 
-No `protoc`, no submodules, no pre-installed binaries — a plain
-`cmake .. && make` from a fresh clone brings everything up. See
-[`example/`](example/) for the full walkthrough.
+`my_protos` is an INTERFACE target that puts the generated headers and
+runtime include path on your executable. A complete consumer project is
+in [`example/`](example/README.md).
 
-## 📊 Benchmarks
-
-All numbers below come from `integration-test/benchmark.c` against the
-same workload mix used by [`gremlin.zig`](https://github.com/octopus-foundation/gremlin.zig),
-so the two implementations are directly comparable op-for-op.
-
-### 🖥️ Test environment
-
-| | |
-| --- | --- |
-| 💻 Laptop        | Framework 16 |
-| 🔧 CPU            | AMD Ryzen AI 9 HX 370 w/ Radeon 890M |
-| 🐧 OS             | Fedora Linux 43 (Workstation Edition) |
-| 🧬 Kernel         | 6.19.11-200.fc43.x86_64 |
-| 🛠️ GCC            | 15.2.1 (Red Hat 15.2.1-7) |
-| ⚙️ Clang          | 21.1.8 (Fedora 21.1.8-4.fc43) |
-| 🦎 Zig            | 0.15.2 (gremlin.zig reference build) |
-
-### Table 1 — gremlin.c vs gremlin.zig (20M iterations, ns/op)
-
-| Benchmark              |  C (GCC) | C (Clang) |      Zig | GCC vs Zig | Clang vs Zig |
-| ---------------------- | -------: | --------: | -------: | ---------: | -----------: |
-| DeepNested Marshal     |   229 ns |    220 ns |   566 ns |      x2.47 |        x2.57 |
-| DeepNested Unmarshal   |    23 ns |     26 ns |    51 ns |      x2.22 |        x1.96 |
-| DeepNested Lazy Read   |    24 ns |     26 ns |    51 ns |      x2.13 |        x1.96 |
-| DeepNested Deep Access |    65 ns |     66 ns |   165 ns |      x2.54 |        x2.50 |
-| Golden Marshal         |    86 ns |     82 ns |   151 ns |      x1.76 |        x1.84 |
-| Golden Unmarshal       |   204 ns |    203 ns |   410 ns |      x2.01 |        x2.02 |
-| Golden Lazy Read       |   206 ns |    205 ns |   406 ns |      x1.97 |        x1.98 |
-| Golden Deep Access     |   211 ns |    217 ns |   423 ns |      x2.00 |        x1.95 |
-| **Sum per-op**         | **1048 ns** | **1045 ns** | **2223 ns** | **x2.12** |   **x2.13** |
-
-C builds cross the Zig reference by roughly **2×** on the aggregate
-sum — GCC and Clang are within noise of each other on every workload.
-
-### Table 2 — `perf stat` (1M iterations, whole-program totals, Clang vs Zig)
-
-Independent confirmation from the hardware counters: the C build
-executes about half the instructions and burns about half the cycles
-of the Zig reference over an identical workload. Cache behaviour is a
-tie; the x2 wall-clock delta is explained almost entirely by
-instruction count + IPC.
-
-| Metric         |         C (Clang) |              Zig | Zig vs Clang     |
-| -------------- | ----------------: | ---------------: | ---------------- |
-| Instructions   |    31,406,664,618 |   60,996,429,152 | x1.94 more       |
-| Cycles         |     5,109,043,462 |   10,565,282,597 | x2.07 more       |
-| Branch misses  |           781,518 |        1,516,035 | x1.94 more       |
-| Cache misses   |            24,665 |           24,737 | x1.00 (tie)      |
-| Wall time      |            1.05 s |           2.20 s | x2.10 slower     |
-| IPC            |              6.15 |             5.77 | —                |
-
-### 🔁 Reproducing
-
-```bash
-mkdir build && cd build
-cmake ..
-make benchmark
-./integration-test/benchmark 20000000    # 20M iterations
-```
-
-The benchmark target is built at `-O3 -DNDEBUG -march=native -flto`.
-
-## 🧩 Subprojects
-
-Each directory is a self-contained CMake project; most also carry an
-ACSL verification suite. Read the per-project README for the full
-contract.
-
-| Path | What it is | Verified |
-| --- | --- | --- |
-| 🦎 [`parser/`](parser/README.md) | `gremlinp` — zero-alloc protobuf 3 / editions syntax parser. Every function has an ACSL contract. | 7486 / 7486 goals |
-| 🧬 [`descriptors/`](descriptors/README.md) | `gremlind` — descriptor pool: build → link imports → cycles → scoped names → visibility → extends → type-refs → topo sort. | arena: 115 / 115 goals |
-| ⚡ [`runtime/`](runtime/README.md) | `gremlin` — header-only wire primitives (varint, fixed32/64, zigzag, LEN_PREFIX bytes). `#include`d by every generated header. | 719 / 719 goals |
-| 🛠️ [`gremlinc/`](gremlinc/README.md) | The C code generator — walks a resolved descriptor pool and emits one `.pb.h` per input. Dispatches per wire family. | snake-case + const-convert: 235 / 235 goals |
-| 🧾 [`gremlinc-gen/`](gremlinc-gen/README.md) | CLI wrapper around `gremlinc` + the `gremlinc_generate()` CMake helper that consumers call. | — (thin driver) |
-
-## 🚀 Quick start
-
-From the repo root:
+From this repo:
 
 ```bash
 mkdir build && cd build
@@ -157,76 +90,55 @@ make
 ctest
 ```
 
-That brings up every subproject, builds `libgremlinp.a`,
-`libgremlind.a`, `libgremlinc.a`, the header-only runtime interface,
-and the `gremlinc-gen` CLI, then runs every test suite.
+## Runtime API Shape
 
-### Generating code for your own `.proto` files
+Generated messages use plain C structs and inline functions:
 
-`gremlinc-gen/cmake/GremlincGenerate.cmake` is auto-loaded when the
-top-level tree is brought in. Downstream projects do:
+```c
+size_t need = example_Person_size(&person);
+uint8_t *buf = malloc(need);
 
-```cmake
-add_subdirectory(path/to/gremlin.c)
+struct gremlin_writer w;
+gremlin_writer_init(&w, buf, need);
+example_Person_encode(&person, &w);
 
-gremlinc_generate(
-    TARGET       my_protos
-    IMPORTS_ROOT ${CMAKE_SOURCE_DIR}/protos
-    PROTOS       foo.proto nested/bar.proto
-)
-
-add_executable(my_app main.c)
-target_link_libraries(my_app PRIVATE my_protos)
+example_Person_reader r;
+enum gremlin_error err = example_Person_reader_init(&r, buf, w.offset);
 ```
 
-`my_protos` is an INTERFACE library that carries the generated
-headers on its include path and transitively pulls in the runtime.
-See [`gremlinc-gen/README.md`](gremlinc-gen/README.md) for the full
-option surface.
+See [`example/main.c`](example/main.c) for a full encode/decode path.
 
-## 🔬 Formal verification
+## Benchmarks
 
-Every subproject that ships verified code exposes a `verify-*` umbrella
-target; the top-level build aggregates them behind a single `verify`
-target.
+`integration-test/benchmark.c` is a C port of the gremlin.zig benchmark
+corpus. On the current development machine, the generated C path is
+about 2x faster than the Zig reference on the aggregate benchmark sum.
+
+Reproduce locally:
 
 ```bash
-cmake --build . --target verify               # run every WP target
-
-# or per-project:
-cmake --build . --target verify-parser        # 7486 goals
-cmake --build . --target verify-descriptors   # arena: 115 goals
-cmake --build . --target verify-runtime       # 719 goals
-cmake --build . --target verify-gremlinc      # 235 goals
+cmake -S integration-test -B integration-test/build
+cmake --build integration-test/build --target benchmark
+./integration-test/build/benchmark 20000000
 ```
 
-Dependencies: [Frama-C](https://www.frama-c.com/) with the WP plugin
-plus Alt-Ergo and Z3. The [parser README](parser/README.md#️-running-verification)
-has full install instructions — the other subprojects share the same
-toolchain.
+Benchmark builds use `-O3 -DNDEBUG -march=native -flto`, so results are
+machine- and compiler-dependent.
 
-📂 Proofs are cached in each subproject's `.wp-cache/` so subsequent
-runs only re-prove changed goals.
+## Repository Layout
 
-## 📁 Layout
-
-```
-gremlin.c/
-├── parser/          — gremlinp: verified protobuf syntax parser
-├── descriptors/     — gremlind: descriptor pool + resolution pipeline
-├── runtime/         — gremlin: header-only wire primitives (verified)
-├── gremlinc/        — the C code generator library
-├── gremlinc-gen/    — CLI driver + GremlincGenerate.cmake
-├── shared/          — cross-project headers (test framework, etc.)
-├── integration-test/— end-to-end tests + benchmarks against the zig build
-└── CMakeLists.txt   — top-level umbrella: brings up every subproject
+```text
+parser/           protobuf syntax parser used by the compiler
+descriptors/      descriptor pool and resolution pipeline
+runtime/          verified header-only wire primitives
+gremlinc/         C code generator library
+gremlinc-gen/     CLI driver and gremlinc_generate() CMake helper
+example/          standalone consumer example
+integration-test/ generated-code tests and benchmark corpus
 ```
 
-## 🔗 Related projects
+## Related
 
-- 🧟 [**gremlin.zig**](https://github.com/octopus-foundation/gremlin.zig)
-  — the reference Zig implementation. This repo is a C99 port with
-  the same encode / decode shape and the same benchmark corpus
-  (`integration-test/` cross-checks the two byte-for-byte against
-  golden files). If you want the upstream docs, performance
-  benchmarks, or a Zig-side integration guide, start there.
+This is a C99 port of
+[`gremlin.zig`](https://github.com/octopus-foundation/gremlin.zig) with
+the same encode/decode model and benchmark corpus.
