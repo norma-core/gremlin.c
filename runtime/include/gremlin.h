@@ -442,6 +442,9 @@ gremlin_varint_decode(const uint8_t *buf, size_t len)
 
 /* ------------ Fixed 32 ------------ */
 
+/*@ assigns \nothing;
+    ensures \result == 4;
+*/
 static inline __attribute__((always_inline)) size_t
 gremlin_fixed32_size(void)
 {
@@ -502,6 +505,9 @@ gremlin_fixed32_decode(const uint8_t *buf, size_t len)
 
 /* ------------ Fixed 64 ------------ */
 
+/*@ assigns \nothing;
+    ensures \result == 8;
+*/
 static inline __attribute__((always_inline)) size_t
 gremlin_fixed64_size(void)
 {
@@ -955,12 +961,23 @@ struct gremlin_bytes_decode_result {
 	enum gremlin_error	error;
 };
 
+/*@ // b lies inside src[0 .. n): what generated readers promise about every
+    // bytes, string and message span they keep.
+    predicate gremlin_span_in(struct gremlin_bytes b, uint8_t *src, integer n) =
+      \base_addr(b.data) == \base_addr(src) &&
+      src <= b.data && b.data + b.len <= src + n;
+*/
+
 /*@ requires len == 0 || \valid_read(buf + (0 .. len - 1));
     assigns  \nothing;
     ensures  \result.error == GREMLIN_OK ||
              \result.error == GREMLIN_ERROR_TRUNCATED ||
              \result.error == GREMLIN_ERROR_OVERFLOW;
     ensures  \result.error == GREMLIN_OK ==> \result.consumed <= len;
+    // the payload is the tail of what was consumed, after a length varint
+    ensures  \result.error == GREMLIN_OK ==>
+               \result.bytes.len < \result.consumed &&
+               \result.bytes.data == buf + (\result.consumed - \result.bytes.len);
     ensures  \result.error != GREMLIN_OK ==>
                \result.consumed == 0 &&
                \result.bytes.data == \null &&

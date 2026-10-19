@@ -121,6 +121,7 @@ enum gremlinp_parsing_error
 gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 				  const struct gremlind_field *f,
 				  const char *reader_ty,
+				  const char *reader_ok,
 				  const char *fname)
 {
 	enum gremlinp_parsing_error err;
@@ -134,8 +135,10 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	W("\tsize_t\t\t offset;\n");
 	W("\tsize_t\t\t count_remaining;\n");
 	W("} "); W(reader_ty); W("_"); W(fname); W("_iter;\n\n");
+	if ((err = gremlinc_emit_iter_ok(w, reader_ty, fname, false)) != GREMLINP_OK) return err;
 
 	/* count */
+	if ((err = gremlinc_emit_iter_count_spec(w, fname)) != GREMLINP_OK) return err;
 	W("static inline size_t\n");
 	W(reader_ty); W("_"); W(fname); W("_count(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -143,6 +146,7 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	W("\treturn r->"); W(fname); W("_count;\n}\n\n");
 
 	/* begin */
+	if ((err = gremlinc_emit_iter_begin_spec(w, reader_ty, reader_ok, fname)) != GREMLINP_OK) return err;
 	W("static inline "); W(reader_ty); W("_"); W(fname); W("_iter\n");
 	W(reader_ty); W("_"); W(fname); W("_begin(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -155,6 +159,7 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	W("\treturn it;\n}\n\n");
 
 	/* next: decode current bytes, init child reader, advance */
+	if ((err = gremlinc_emit_iter_next_spec(w, reader_ty, fname, NULL, tname)) != GREMLINP_OK) return err;
 	W("static inline enum gremlin_error\n");
 	W(reader_ty); W("_"); W(fname); W("_next(");
 	W(reader_ty); W("_"); W(fname); W("_iter *it, "); W(tname);
@@ -169,6 +174,7 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	W("\tenum gremlin_error _ie = "); W(tname);
 	W("_reader_init(out, d.bytes.data, d.bytes.len);\n"
 	  "\tif (_ie != GREMLIN_OK) return _ie;\n");
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t", false)) != GREMLINP_OK) return err;
 	W("\twhile (it->count_remaining > 0 && it->offset < it->src_len) {\n");
 	W("\t\tstruct gremlin_varint32_decode_result t =\n"
 	  "\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"

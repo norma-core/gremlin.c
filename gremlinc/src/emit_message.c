@@ -367,7 +367,8 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	const char *encode_fn	   = claim_join2(scope, tname, "_encode");
 	const char *reader_ty	   = claim_join2(scope, tname, "_reader");
 	const char *reader_init_fn = claim_join2(scope, reader_ty, "_init");
-	if (!size_fn || !encode_fn || !reader_ty || !reader_init_fn) {
+	const char *reader_ok	   = claim_join2(scope, reader_ty, "_ok");
+	if (!size_fn || !encode_fn || !reader_ty || !reader_init_fn || !reader_ok) {
 		return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
 
@@ -621,7 +622,38 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	}
 	W("} "); W(reader_ty); W(";\n\n");
 
+	/* ---- reader invariant ----
+	 * What reader_init establishes over src[0 .. n): every kept span lies
+	 * in it, and a repeated field's count and first offset stay below n.
+	 * The loop holds it with n = offset, the result with n = len. */
+	W("/*@ predicate "); W(reader_ok); W("{L}("); W(reader_ty);
+	W(" *r, integer n) =\n      r->src_len >= n");
+	for (size_t i = 0; i < m->fields.count; i++) {
+		const struct gremlind_field *fld = &m->fields.items[i];
+		if (field_is_repeated_bytes(fld) || field_is_repeated_msg(fld) ||
+		    field_is_map(fld) || field_is_repeated_scalar(fld)) {
+			W(" &&\n      r->"); W(fnames[i]); W("_count <= n &&\n      (r->");
+			W(fnames[i]); W("_count > 0 ==> r->"); W(fnames[i]);
+			W("_first_offset < n)");
+		} else if (field_is_bytes(fld) ||
+			   fld->type.kind == GREMLIND_TYPE_REF_MESSAGE) {
+			W(" &&\n      (r->_has."); W(fnames[i]);
+			W(" ==> gremlin_span_in(r->"); W(fnames[i]);
+			W(", (uint8_t *)r->src, n))");
+		}
+	}
+	W(";\n*/\n\n");
+
 	/* ---- reader init ---- */
+	W("/*@ requires \\valid(r);\n"
+	  "    requires len == 0 || \\valid_read(src + (0 .. len - 1));\n"
+	  "    requires \\separated(r, src + (0 .. len - 1));\n"
+	  "    assigns *r;\n"
+	  "    ensures r->src == src && r->src_len == len;\n"
+	  "    ensures \\result == GREMLIN_OK ==> ");
+	W(reader_ok); W("(r, len);\n");
+	if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
+	W("*/\n");
 	W("static inline enum gremlin_error\n");
 	W(reader_init_fn); W("("); W(reader_ty); W(" *r, const uint8_t *src, size_t len)\n{\n");
 	/* Compound literal zero-initializes every field including the
@@ -630,6 +662,12 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * populated from wire data. */
 	W("\t*r = ("); W(reader_ty); W("){ .src = src, .src_len = len };\n");
 	W("\tsize_t offset = 0;\n");
+	W("\t/*@ loop invariant 0 <= offset <= len;\n"
+	  "\t    loop invariant r->src == src && r->src_len == len;\n"
+	  "\t    loop invariant "); W(reader_ok); W("(r, offset);\n"
+	  "\t    loop assigns offset, *r;\n"
+	  "\t    loop variant len - offset;\n"
+	  "\t*/\n");
 	W("\twhile (offset < len) {\n");
 	/* Read the tag via varint32 — protobuf tags fit in uint32 (field_num
 	 * ≤ 2^29-1 << 3 | 7 < 2^32). Exact uint32 match against a codegen-
@@ -645,12 +683,12 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	}
 	/* Miss: unknown field_num, or field_num we know but wrong wire_type.
 	 * Extract wire_type + field_num inline to preserve the same reject
-	 * semantics tag_decode would have given us. */
+	 * semantics tag_decode would have given us. A varint32 tag cannot
+	 * carry a field number above GREMLIN_MAX_FIELD_NUM, so only 0 is
+	 * left to reject. */
 	W("\t\tunsigned _wt = (unsigned)(t.value % 8u);\n"
 	  "\t\tif (_wt == 6u || _wt == 7u) return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n"
-	  "\t\tuint32_t _fn = t.value / 8u;\n"
-	  "\t\tif (_fn == 0u || _fn > GREMLIN_MAX_FIELD_NUM)\n"
-	  "\t\t\treturn GREMLIN_ERROR_INVALID_FIELD_NUM;\n"
+	  "\t\tif (t.value / 8u == 0u) return GREMLIN_ERROR_INVALID_FIELD_NUM;\n"
 	  "\t\tstruct gremlin_skip_result sk =\n"
 	  "\t\t\tgremlin_skip_data(src + offset, len - offset,\n"
 	  "\t\t\t                  (enum gremlin_wire_type)_wt);\n"
@@ -668,31 +706,42 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 		const struct gremlind_field *fld = &m->fields.items[i];
 		if (field_is_repeated_bytes(fld)) {
 			err = gremlinc_repeated_bytes_emit_getter(w, fld,
-				reader_ty, fnames[i]);
+				reader_ty, reader_ok, fnames[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (field_is_repeated_msg(fld)) {
 			err = gremlinc_repeated_msg_emit_getter(w, fld,
-				reader_ty, fnames[i]);
+				reader_ty, reader_ok, fnames[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (field_is_map(fld)) {
 			err = gremlinc_map_emit_getter(w, scope->arena, fld,
-				reader_ty, fnames[i],
+				reader_ty, reader_ok, fnames[i],
 				&map_keys[i], &map_vals[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (field_is_repeated_scalar(fld)) {
 			err = gremlinc_repeated_scalar_emit_getter(w, fld,
-				reader_ty, fnames[i], packed_names[i]);
+				reader_ty, reader_ok, fnames[i], packed_names[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (fld->type.kind == GREMLIND_TYPE_REF_MESSAGE) {
 			const char *ttarget = fld->type.u.message->c_name;
+			W("/*@ requires \\valid(out);\n"
+			  "    requires r == \\null || (\\valid_read(r) && ");
+			W(reader_ok); W("(r, r->src_len) &&\n"
+			  "               (r->src_len == 0 ||\n"
+			  "                \\valid_read(r->src + (0 .. r->src_len - 1))) &&\n"
+			  "               \\separated(out, r, r->src + (0 .. r->src_len - 1)));\n"
+			  "    assigns *out;\n");
+			if ((err = gremlinc_emit_child_reader_ok(w, ttarget, "out")) != GREMLINP_OK)
+				return err;
+			if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
+			W("*/\n");
 			W("static inline enum gremlin_error\n");
 			W(getter_fns[i]);
 			W("(const "); W(reader_ty); W(" *r, "); W(ttarget);
@@ -711,6 +760,10 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 		}
 		const char *rt = reader_field_c_type(scope->arena, fld, sinfos[i]);
 		if (rt == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		W("/*@ requires r == \\null || \\valid_read(r);\n"
+		  "    assigns \\nothing;\n"
+		  "    ensures r != \\null && r->_has."); W(fnames[i]);
+		W(" ==> \\result == r->"); W(fnames[i]); W(";\n*/\n");
 		W("static inline "); W(rt); W("\n");
 		W(getter_fns[i]);
 		W("(const "); W(reader_ty); W(" *r)\n{\n");
