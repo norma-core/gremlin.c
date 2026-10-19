@@ -82,6 +82,40 @@ const char			*gremlinc_default_check_rhs(enum scalar_kind k);
 			if (err != GREMLINP_OK) return err;		\
 		} while (0)
 
+/*
+ * ACSL shared by the repeated-field iterators: `<R>_<f>_iter_ok`, which
+ * keeps the cursor inside a readable src, and the contracts of _count,
+ * _begin and _next. `block` adds the packed block end to the invariant;
+ * `out_extra` is one more ensures clause for _next, or NULL; `child_ty`
+ * names the message type _next initialises in `out`, or NULL.
+ */
+enum gremlinp_parsing_error	gremlinc_emit_iter_ok(struct gremlinc_writer *w,
+							const char *reader_ty,
+							const char *fname,
+							bool block);
+enum gremlinp_parsing_error	gremlinc_emit_iter_count_spec(struct gremlinc_writer *w,
+							const char *fname);
+enum gremlinp_parsing_error	gremlinc_emit_iter_begin_spec(struct gremlinc_writer *w,
+							const char *reader_ty,
+							const char *reader_ok,
+							const char *fname);
+enum gremlinp_parsing_error	gremlinc_emit_iter_next_spec(struct gremlinc_writer *w,
+							const char *reader_ty,
+							const char *fname,
+							const char *out_extra,
+							const char *child_ty);
+/* `    ensures` clause listing every gremlin_error a reader can return. */
+enum gremlinp_parsing_error	gremlinc_emit_error_set(struct gremlinc_writer *w);
+/* What a reader that a call left in `out` guarantees once it returned OK. */
+enum gremlinp_parsing_error	gremlinc_emit_child_reader_ok(struct gremlinc_writer *w,
+							const char *child_ty,
+							const char *out);
+/* Annotation for a loop that scans tags forward; `block` when it may also
+ * set block_end. */
+enum gremlinp_parsing_error	gremlinc_emit_iter_scan_spec(struct gremlinc_writer *w,
+							const char *indent,
+							bool block);
+
 /* ------------------------------------------------------------------------
  * Per-family emitters
  *
@@ -190,6 +224,7 @@ enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_reader_arm(struct greml
 enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_getter(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *reader_ty,
+							const char *reader_ok,
 							const char *fname);
 
 /*
@@ -210,6 +245,7 @@ enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_reader_arm(struct gremlin
 enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *reader_ty,
+							const char *reader_ok,
 							const char *fname);
 
 /*
@@ -262,6 +298,7 @@ enum gremlinp_parsing_error	gremlinc_map_emit_getter(struct gremlinc_writer *w,
 							struct gremlind_arena *arena,
 							const struct gremlind_field *f,
 							const char *reader_ty,
+							const char *reader_ok,
 							const char *fname,
 							const struct map_slot_info *key,
 							const struct map_slot_info *val);
@@ -287,6 +324,7 @@ enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_reader_arm(struct grem
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *reader_ty,
+							const char *reader_ok,
 							const char *fname,
 							const char *packed_bool_fname);
 
