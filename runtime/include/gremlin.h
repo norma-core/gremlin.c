@@ -818,6 +818,8 @@ gremlin_fixed64_encode_at(uint8_t * __restrict__ buf, size_t off, uint64_t v)
 /*@ requires off + src_len <= 0x7fffffffffffffff;
     requires src_len == 0 || \valid_read(src + (0 .. src_len - 1));
     requires src_len == 0 || \valid(buf + (off .. off + src_len - 1));
+    requires src_len == 0 ||
+             \separated(buf + (off .. off + src_len - 1), src + (0 .. src_len - 1));
     assigns  buf[off .. off + src_len - 1];
     ensures  \result == off + src_len;
 */
@@ -920,6 +922,8 @@ struct gremlin_bytes {
 /*@ requires valid_writer(w);
     requires src_len == 0 || \valid_read(src + (0 .. src_len - 1));
     requires w->offset + src_len <= w->cap;
+    requires src_len == 0 ||
+             \separated(w->buf + (w->offset .. w->offset + src_len - 1), src + (0 .. src_len - 1));
     assigns  w->offset,
              w->buf[\at(w->offset, Pre) .. \at(w->offset, Pre) + src_len - 1];
     ensures  valid_writer(w);
