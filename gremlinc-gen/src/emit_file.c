@@ -97,8 +97,12 @@ emit_file(struct gremlind_arena *arena,
 		err = gremlinc_emit_message_forward(w, order.predeclare[i]);
 		if (err != GREMLINP_OK) goto out;
 	}
+	struct gremlinc_encode_plan *plan;
+	err = gremlinc_encode_plan_build(arena, order.items, order.count, &plan);
+	if (err != GREMLINP_OK) goto out;
+
 	for (size_t i = 0; i < order.count; i++) {
-		err = gremlinc_emit_message(w, global_scope, order.items[i]);
+		err = gremlinc_emit_message(w, global_scope, order.items[i], plan);
 		if (err != GREMLINP_OK) goto out;
 	}
 

@@ -345,7 +345,8 @@ gremlinc_emit_message_forward(struct gremlinc_writer *w,
 enum gremlinp_parsing_error
 gremlinc_emit_message(struct gremlinc_writer *w,
 		      struct gremlinc_name_scope *scope,
-		      const struct gremlind_message *m)
+		      const struct gremlind_message *m,
+		      struct gremlinc_encode_plan *plan)
 {
 	if (w == NULL || scope == NULL || m == NULL) {
 		return GREMLINP_ERROR_NULL_POINTER;
@@ -454,6 +455,10 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 
 	enum gremlinp_parsing_error err;
 
+	struct gremlinc_espec *sp;
+	err = gremlinc_espec_begin(plan, scope, m, fnames, defaults, &sp);
+	if (err != GREMLINP_OK) return err;
+
 	/* ---- entry typedefs for map fields ---- */
 	for (size_t i = 0; i < m->fields.count; i++) {
 		if (!field_is_map(&m->fields.items[i])) continue;
@@ -515,9 +520,11 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * `gremlinc_emit_message_forward`) lets earlier-emitted sibling
 	 * encoders reference this function even when the struct wasn't
 	 * yet defined at their emission site. */
+	if ((err = gremlinc_espec_cached_size_contract(w, sp))) return err;
 	W("static inline size_t\n");
 	W(tname); W("_cached_size(const "); W(tname); W(" *m)\n{\n");
 	W("\treturn m->_size;\n}\n\n");
+	if ((err = gremlinc_espec_emit_logic(w, scope, sp))) return err;
 
 	/* ---- size function ----
 	 *

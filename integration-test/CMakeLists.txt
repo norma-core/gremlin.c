@@ -72,12 +72,18 @@ endif()
 enable_testing()
 add_test(NAME integration_test COMMAND integration_test)
 
-# Frama-C WP over the read side of generated code, on a fixture with one field
-# of every family. Not part of `make` or ctest: it takes minutes.
+# Frama-C WP over generated code: the read side on a fixture with one field of
+# every family, the write side on one with every family it supports. Not part
+# of `make` or ctest: they take minutes.
 gremlinc_generate(
     TARGET       wp_fixture
     IMPORTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/verify
     PROTOS       wp_fixture.proto
+)
+gremlinc_generate(
+    TARGET       wp_writer
+    IMPORTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/verify
+    PROTOS       wp_writer.proto
 )
 find_program(FRAMAC frama-c)
 if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)
@@ -90,6 +96,17 @@ if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/verify/verify_reader.cmake
         DEPENDS wp_fixture_generate
         COMMENT "WP: read side of generated code"
+        VERBATIM
+    )
+    add_custom_target(verify-generated-write
+        COMMAND ${CMAKE_COMMAND}
+            -DFRAMAC=${FRAMAC}
+            -DHEADER=${CMAKE_CURRENT_BINARY_DIR}/wp_writer/wp_writer.pb.h
+            -DRUNTIME_INCLUDE=${REPO_ROOT}/runtime/include
+            -DREPORT=${CMAKE_CURRENT_BINARY_DIR}/verify-generated-write.json
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/verify/verify_writer.cmake
+        DEPENDS wp_writer_generate
+        COMMENT "WP: write side of generated code"
         VERBATIM
     )
 endif()

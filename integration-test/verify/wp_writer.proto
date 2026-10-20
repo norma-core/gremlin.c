@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package wpw;
+
+enum Kind {
+    KIND_NONE = 0;
+    KIND_ONE = 1;
+}
+
+message Leaf {
+    uint64 id = 1;
+    bytes raw = 2;
+}
+
+message Mid {
+    Leaf leaf = 1;
+    Kind kind = 2;
+    repeated Kind kinds = 3;
+    repeated fixed64 stamps = 4;
+}
+
+// Every family the write side proves: siblings, three levels, repeated children.
+message Top {
+    uint64 seq = 1;
+    string name = 2;
+    Mid mid = 3;
+    Leaf first = 4;
+    repeated bytes chunks = 5;
+    repeated uint64 vals = 6;
+}
+
+message List {
+    uint32 n = 1;
+    repeated Leaf leaves = 2;
+}
