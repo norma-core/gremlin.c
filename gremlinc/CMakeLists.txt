@@ -36,6 +36,7 @@ set(GREMLINC_SOURCES
     src/emit_repeated_scalar.c
     src/emit_map.c
     src/emit_message.c
+    src/emit_encode_spec.c
     src/lib.c
 )
 

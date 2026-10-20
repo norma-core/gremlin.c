@@ -6,6 +6,8 @@
 #include "writer.h"
 #include "naming.h"
 
+struct gremlinc_encode_plan;
+
 /*
  * Emit an enum as a C typedef to `w`. Expected layout:
  *
@@ -61,7 +63,20 @@ enum gremlinp_parsing_error	gremlinc_emit_enum(struct gremlinc_writer *w,
  */
 enum gremlinp_parsing_error	gremlinc_emit_message(struct gremlinc_writer *w,
 						      struct gremlinc_name_scope *scope,
-						      const struct gremlind_message *m);
+						      const struct gremlind_message *m,
+						      struct gremlinc_encode_plan *plan);
+
+/*
+ * Decide which messages of a file get write-side ACSL and which
+ * separation predicates their contracts need.  `order` is the file's
+ * topological message order.  Pass the plan to every
+ * gremlinc_emit_message call for that file, or NULL for no write-side
+ * annotations.
+ */
+enum gremlinp_parsing_error	gremlinc_encode_plan_build(struct gremlind_arena *arena,
+							   struct gremlind_message *const *order,
+							   size_t count,
+							   struct gremlinc_encode_plan **out);
 
 /*
  * Emit the forward declarations for an emittable message:
