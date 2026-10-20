@@ -203,7 +203,9 @@ enum gremlinp_parsing_error	gremlinc_msg_ref_emit_size_field(struct gremlinc_wri
 							size_t fi);
 enum gremlinp_parsing_error	gremlinc_msg_ref_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_msg_ref_emit_reader_arm(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -223,7 +225,9 @@ enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_size_field(struct greml
 							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_reader_arm(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -246,7 +250,9 @@ enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_size_field(struct gremlin
 							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_reader_arm(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -326,7 +332,9 @@ enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_size_field(struct grem
 							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_reader_arm(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname,
@@ -345,11 +353,15 @@ enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_getter(struct gremlinc
 
 enum gremlinc_espec_hook_kind {
 	GREMLINC_HOOK_MSG_SIZE_CHILD,
+	GREMLINC_HOOK_MSG_ENCODE_CHILD,
 	GREMLINC_HOOK_REPMSG_BODY,
 	GREMLINC_HOOK_REPBYTES_BODY,
 	GREMLINC_HOOK_REPMSG_SIZE_CHILD,
 	GREMLINC_HOOK_REPMSG_NULL,
-	GREMLINC_HOOK_PACKED_PAYLOAD
+	GREMLINC_HOOK_REPMSG_ENCODE_CHILD,
+	GREMLINC_HOOK_PACKED_PAYLOAD,
+	GREMLINC_HOOK_PACKED_ELEMS,
+	GREMLINC_HOOK_PACKED_ELEM
 };
 
 enum gremlinp_parsing_error	gremlinc_espec_begin(struct gremlinc_encode_plan *plan,
@@ -376,6 +388,20 @@ enum gremlinp_parsing_error	gremlinc_espec_size_field_after(struct gremlinc_writ
 enum gremlinp_parsing_error	gremlinc_espec_size_before_write(struct gremlinc_writer *w,
 							const struct gremlinc_espec *sp);
 enum gremlinp_parsing_error	gremlinc_espec_size_after_write(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_encode_contract(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_encode_start(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_encode_field_before(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi);
+enum gremlinp_parsing_error	gremlinc_espec_encode_field_after(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi);
+enum gremlinp_parsing_error	gremlinc_espec_encode_end(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_encode_wrapper_contract(struct gremlinc_writer *w,
 							const struct gremlinc_espec *sp);
 enum gremlinp_parsing_error	gremlinc_espec_hook(struct gremlinc_writer *w,
 							const struct gremlinc_espec *sp,

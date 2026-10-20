@@ -58,6 +58,23 @@ Run from the build directory:
 cmake --build . --target verify-runtime
 ```
 
+Generated code is proved in `integration-test`, on fixtures generated
+at build time: `verify-generated` covers the read side and
+`verify-generated-write` the write side (`_size`, `_encode_at`,
+`_encode`, `_cached_size`, their ghost helpers and lemmas). Both take
+the function list from the generated header and need CMake 3.19 or
+newer:
+
+```bash
+cmake -S integration-test -B build-it
+cmake --build build-it --target verify-generated verify-generated-write
+```
+
+The write side covers messages built from varint and fixed scalars (a
+singular bool aside), bytes, strings, enums, message fields and repeated
+message, bytes and packed fields; other messages are generated as
+before, without write-side contracts.
+
 The repository also contains other proofs, such as descriptor arena
 allocation and selected code-generator helpers. Parser proofs are useful
 for the compiler itself, but they are not the proof surface generated

@@ -1804,6 +1804,122 @@ gremlinc_espec_size_after_write(struct gremlinc_writer *w, const struct gremlinc
 }
 
 enum gremlinp_parsing_error
+gremlinc_espec_encode_contract(struct gremlinc_writer *w, const struct gremlinc_espec *sp)
+{
+	enum gremlinp_parsing_error err;
+	if (sp == NULL) return GREMLINP_OK;
+	const struct ep_msg *e = sp->e;
+	F("/*@ requires %s(m) && %s(m);\n"
+	  "    requires _off + m->_size <= 0x7fffffffffffffff;\n"
+	  "    requires m->_size == 0 || \\valid(_buf + (_off .. _off + m->_size - 1));\n"
+	  "    requires %s(m, _buf, _off, _off + m->_size - 1);\n"
+	  "    assigns _buf[_off .. _off + m->_size - 1];\n"
+	  "    ensures \\result == \\old(_off + m->_size);\n*/\n",
+	  e->valid, e->sized, e->bufsep);
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_espec_encode_start(struct gremlinc_writer *w, const struct gremlinc_espec *sp)
+{
+	return gremlinc_espec_size_start(w, sp);
+}
+
+static enum gremlinp_parsing_error
+encode_loop(struct gremlinc_writer *w, const char *indent, const char *count,
+	    const char *inv)
+{
+	enum gremlinp_parsing_error err;
+	F("%s/*@ loop invariant 0 <= _i <= %s;\n"
+	  "%s    loop invariant %s;\n"
+	  "%s    loop assigns _i, _off, _buf[\\at(_off, Pre) .. \\at(_off, Pre) + \\at(m->_size, Pre) - 1];\n"
+	  "%s    loop variant %s - _i;\n"
+	  "%s*/\n", indent, count, indent, inv, indent, indent, count, indent);
+	return GREMLINP_OK;
+}
+
+/* Room left for field fi: what the remaining fields need, plus a child's own facts. */
+static enum gremlinp_parsing_error
+encode_room(struct gremlinc_writer *w, const struct gremlinc_espec *sp, size_t fi)
+{
+	enum gremlinp_parsing_error err;
+	const struct ep_msg *e = sp->e;
+	const struct ep_field *f = &e->f[fi];
+	const char *fn = f->fname;
+	for (size_t j = fi + 1; j < e->nf; j++)
+		F("\t/*@ assert \\at(%s(m), Pre) >= 0; */\n", e->f[j].t);
+	F("\t/*@ assert _off");
+	for (size_t j = fi; j < e->nf; j++)
+		F(" + \\at(%s(m), Pre)", e->f[j].t);
+	F(" == \\at(_off, Pre) + \\at(m->_size, Pre); */\n");
+	F("\t/*@ assert _off + \\at(%s(m), Pre) <= \\at(_off, Pre) + \\at(m->_size, Pre); */\n", f->t);
+	if (f->kind != EK_MSG) return GREMLINP_OK;
+	const struct ep_msg *c = child_of(sp, f);
+	F("\t/*@ assert m->%s != \\null ==> %s((%s *)m->%s) && %s((%s *)m->%s); */\n",
+	  fn, c->valid, c->tname, fn, c->sized, c->tname, fn);
+	F("\t/*@ assert m->%s != \\null ==> %s(m) == %u + varint_size(m->%s->_size) + m->%s->_size; */\n",
+	  fn, f->t, f->tagb, fn, fn);
+	F("\t/*@ assert m->%s != \\null ==> %s((%s *)m->%s, _buf, _off, \\at(_off, Pre) + \\at(m->_size, Pre) - 1); */\n",
+	  fn, c->bufsep, c->tname, fn);
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_espec_encode_field_before(struct gremlinc_writer *w, const struct gremlinc_espec *sp,
+				   size_t fi)
+{
+	if (sp == NULL) return GREMLINP_OK;
+	const struct ep_field *f = &sp->e->f[fi];
+	if (f->kind == EK_MSG || f->kind == EK_REP_VARINT) return encode_room(w, sp, fi);
+	if (f->kind != EK_REP_MSG && f->kind != EK_REP_BYTES) return GREMLINP_OK;
+	struct gremlind_arena *a = sp->plan->arena;
+	const char *count = dup(a, "m->%s_count", f->fname);
+	const char *inv = dup(a, "\\forall integer k; k == _i ==> _off == \\at(_off, _A%zu) + \\at(%s(m, k), Pre)",
+			      fi, f->sum);
+	if (count == NULL || inv == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+	return encode_loop(w, "\t", count, inv);
+}
+
+enum gremlinp_parsing_error
+gremlinc_espec_encode_field_after(struct gremlinc_writer *w, const struct gremlinc_espec *sp,
+				  size_t fi)
+{
+	enum gremlinp_parsing_error err;
+	if (sp == NULL) return GREMLINP_OK;
+	F("\t/*@ assert _off == \\at(_off, _A%zu) + \\at(%s(m), Pre); */\n", fi, sp->e->f[fi].t);
+	F("\t/*@ ghost _A%zu: ; */\n", fi + 1);
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_espec_encode_end(struct gremlinc_writer *w, const struct gremlinc_espec *sp)
+{
+	enum gremlinp_parsing_error err;
+	if (sp == NULL) return GREMLINP_OK;
+	F("\t/*@ assert _off == \\at(_off, Pre) + \\at(%s(m), Pre); */\n", sp->e->tsize);
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_espec_encode_wrapper_contract(struct gremlinc_writer *w, const struct gremlinc_espec *sp)
+{
+	enum gremlinp_parsing_error err;
+	if (sp == NULL) return GREMLINP_OK;
+	const struct ep_msg *e = sp->e;
+	F("/*@ requires %s(m) && %s(m);\n"
+	  "    requires \\valid(w);\n"
+	  "    requires w->offset + m->_size <= 0x7fffffffffffffff;\n"
+	  "    requires m->_size == 0 || \\valid(w->buf + (w->offset .. w->offset + m->_size - 1));\n"
+	  "    requires %s(m, w->buf, w->offset, w->offset + m->_size - 1);\n"
+	  "    requires \\separated(w, w->buf + (w->offset .. w->offset + m->_size - 1));\n"
+	  "    assigns w->offset, w->buf[w->offset .. w->offset + m->_size - 1];\n"
+	  "    ensures w->offset == \\old(w->offset + m->_size);\n*/\n",
+	  e->valid, e->sized, e->bufsep);
+	return GREMLINP_OK;
+}
+
+/* Annotations the family emitters place inside their own blocks. */
+enum gremlinp_parsing_error
 gremlinc_espec_hook(struct gremlinc_writer *w, const struct gremlinc_espec *sp,
 		    size_t fi, enum gremlinc_espec_hook_kind h)
 {
@@ -1813,6 +1929,7 @@ gremlinc_espec_hook(struct gremlinc_writer *w, const struct gremlinc_espec *sp,
 	const char *fn = f->fname;
 	const char *C = f->child >= 0 ? child_of(sp, f)->tname : NULL;
 	const char *Cts = f->child >= 0 ? child_of(sp, f)->tsize : NULL;
+	const char *Csz = f->child >= 0 ? child_of(sp, f)->sized : NULL;
 
 	switch (h) {
 	case GREMLINC_HOOK_MSG_SIZE_CHILD:
@@ -1843,12 +1960,46 @@ gremlinc_espec_hook(struct gremlinc_writer *w, const struct gremlinc_espec *sp,
 		F("\t\t\t/*@ assert \\forall integer k; k == _i ==> \\at(%s((%s *)m->%s[k]), Pre) == %u; */\n",
 		  f->term, C, fn, f->tagb + 1);
 		break;
+	case GREMLINC_HOOK_MSG_ENCODE_CHILD:
+		F("\t\t/*@ assert _off == \\at(_off, _A%zu) + %u + varint_size(m->%s->_size); */\n",
+		  fi, f->tagb, fn);
+		F("\t\t/*@ assert _off + m->%s->_size <= \\at(_off, Pre) + \\at(m->_size, Pre); */\n", fn);
+		F("\t\t/*@ assert %s((%s *)m->%s, _buf, _off, _off + m->%s->_size - 1); */\n",
+		  child_of(sp, f)->bufsep, C, fn, fn);
+		break;
+	case GREMLINC_HOOK_REPMSG_ENCODE_CHILD:
+		F("\t\t\t/*@ assert %s((%s *)_el); */\n", Csz, C);
+		F("\t\t\t/*@ assert \\forall integer k; k == _i ==>\n"
+		  "\t\t\t      \\at(%s((%s *)m->%s[k]), Pre) == %u + varint_size(_el->_size) + _el->_size; */\n",
+		  f->term, C, fn, f->tagb);
+		break;
 	case GREMLINC_HOOK_PACKED_PAYLOAD:
 		F("\t\t/*@ loop invariant 0 <= _i <= m->%s_count;\n"
 		  "\t\t    loop invariant \\forall integer k; k == _i ==> _payload == \\at(%s(m, k), Pre);\n"
 		  "\t\t    loop assigns _i, _payload;\n"
 		  "\t\t    loop variant m->%s_count - _i;\n\t\t*/\n", fn, f->sum, fn);
 		break;
+	case GREMLINC_HOOK_PACKED_ELEM: {
+		if (f->kind != EK_REP_VARINT) break;
+		const char *es = elem_size(sp->plan->arena, f, dup(sp->plan->arena, "m->%s[k]", fn));
+		if (es == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		F("\t\t\t/*@ assert \\forall integer k; k == _i ==>\n"
+		  "\t\t\t      \\at(%s(m, k + 1), Pre) == \\at(%s(m, k), Pre) + \\at(%s, Pre) &&\n"
+		  "\t\t\t      \\at(%s(m, k + 1), Pre) <= \\at(%s(m, m->%s_count), Pre); */\n",
+		  f->sum, f->sum, es, f->sum, f->sum, fn);
+		break;
+	}
+	case GREMLINC_HOOK_PACKED_ELEMS: {
+		struct gremlind_arena *a = sp->plan->arena;
+		F("\t\t/*@ ghost _P%zu: ; */\n", fi);
+		const char *count = dup(a, "m->%s_count", fn);
+		const char *inv = f->kind == EK_REP_FIXED
+			? dup(a, "_off == \\at(_off, _P%zu) + _i * %u", fi, f->width)
+			: dup(a, "\\forall integer k; k == _i ==> _off == \\at(_off, _P%zu) + \\at(%s(m, k), Pre)",
+			      fi, f->sum);
+		if (count == NULL || inv == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		return encode_loop(w, "\t\t", count, inv);
+	}
 	}
 	return GREMLINP_OK;
 }

@@ -121,22 +121,24 @@ dispatch_encode_field(struct gremlinc_writer *w,
 		      const char *fname,
 		      const char *default_lit,
 		      const struct map_slot_info *mkey,
-		      const struct map_slot_info *mval)
+		      const struct map_slot_info *mval,
+		      const struct gremlinc_espec *sp,
+		      size_t fi)
 {
 	if (field_is_map(f)) {
 		return gremlinc_map_emit_encode_field(w, f, fname, mkey, mval);
 	}
 	if (field_is_repeated_bytes(f)) {
-		return gremlinc_repeated_bytes_emit_encode_field(w, f, fname);
+		return gremlinc_repeated_bytes_emit_encode_field(w, f, fname, sp, fi);
 	}
 	if (field_is_repeated_msg(f)) {
-		return gremlinc_repeated_msg_emit_encode_field(w, f, fname);
+		return gremlinc_repeated_msg_emit_encode_field(w, f, fname, sp, fi);
 	}
 	if (field_is_repeated_scalar(f)) {
-		return gremlinc_repeated_scalar_emit_encode_field(w, f, fname);
+		return gremlinc_repeated_scalar_emit_encode_field(w, f, fname, sp, fi);
 	}
 	if (f->type.kind == GREMLIND_TYPE_REF_MESSAGE) {
-		return gremlinc_msg_ref_emit_encode_field(w, f, fname);
+		return gremlinc_msg_ref_emit_encode_field(w, f, fname, sp, fi);
 	}
 	if (f->type.kind == GREMLIND_TYPE_REF_ENUM) {
 		return gremlinc_enum_ref_emit_encode_field(w, f, fname, default_lit);
@@ -578,21 +580,27 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * reloads between consecutive writes. */
 	/* Flat encode body — same rationale as `_size`: per-field helper
 	 * split cost ~7% on bench even with always_inline. */
+	if ((err = gremlinc_espec_encode_contract(w, sp))) return err;
 	W("__attribute__((unused)) static size_t\n");
 	W(tname); W("_encode_at(const "); W(tname);
 	W(" *m, uint8_t * __restrict__ _buf, size_t _off)\n{\n");
 	if (m->fields.count == 0) {
 		W("\t(void)m;\n\t(void)_buf;\n");
 	}
+	if ((err = gremlinc_espec_encode_start(w, sp))) return err;
 	for (size_t i = 0; i < m->fields.count; i++) {
+		if ((err = gremlinc_espec_encode_field_before(w, sp, i))) return err;
 		err = dispatch_encode_field(w, scope->arena,
 					    &m->fields.items[i], sinfos[i],
 					    fnames[i], defaults[i],
-					    &map_keys[i], &map_vals[i]);
+					    &map_keys[i], &map_vals[i], sp, i);
 		if (err != GREMLINP_OK) return err;
+		if ((err = gremlinc_espec_encode_field_after(w, sp, i))) return err;
 	}
+	if ((err = gremlinc_espec_encode_end(w, sp))) return err;
 	W("\treturn _off;\n}\n\n");
 
+	if ((err = gremlinc_espec_encode_wrapper_contract(w, sp))) return err;
 	W("__attribute__((unused)) static void\n");
 	W(encode_fn); W("(const "); W(tname); W(" *m, struct gremlin_writer *w)\n{\n");
 	W("\tw->offset = "); W(tname); W("_encode_at(m, w->buf, w->offset);\n");

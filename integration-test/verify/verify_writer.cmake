@@ -1,6 +1,6 @@
-# Proves the write side of a generated header: every _size and _cached_size it
-# defines, the ghost helpers their proofs call, and the lemmas. Lemmas go in a
-# second run: their induction needs the tip prover.
+# Proves the write side of a generated header: every _size, _encode_at, _encode
+# and _cached_size it defines, the ghost helpers their proofs call, and the
+# lemmas. Lemmas go in a second run: their induction needs the tip prover.
 #
 #   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... -P verify_writer.cmake
 
@@ -20,7 +20,7 @@ foreach(_line IN LISTS _ghosts)
     endif()
     if(_name MATCHES "^(.*)_tsize_nonneg$")
         set(_m ${CMAKE_MATCH_1})
-        list(APPEND _fcts ${_m}_size ${_m}_cached_size)
+        list(APPEND _fcts ${_m}_size ${_m}_encode_at ${_m}_encode ${_m}_cached_size)
     endif()
 endforeach()
 if(NOT _fcts)
