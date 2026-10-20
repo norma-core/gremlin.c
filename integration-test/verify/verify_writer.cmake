@@ -1,6 +1,6 @@
-# Proves the write side of a generated header: _cached_size, the ghost
-# helpers and the lemmas. Lemmas go in a second run: their induction
-# needs the tip prover.
+# Proves the write side of a generated header: every _size and _cached_size it
+# defines, the ghost helpers their proofs call, and the lemmas. Lemmas go in a
+# second run: their induction needs the tip prover.
 #
 #   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] -P verify_writer.cmake
 
@@ -8,7 +8,8 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Messages with write-side contracts are the ones that got ghost helpers. Their
-# _cached_size is found by the type it takes, whatever suffix it was given.
+# _size and _cached_size, the two that take only the message, are found by the
+# type they take, whatever suffix they were given.
 file(STRINGS "${HEADER}" _ghosts REGEX "^  void [A-Za-z_][A-Za-z0-9_]*\\(")
 set(_fcts)
 set(_types)
@@ -36,7 +37,7 @@ if(PROTO)
         message(FATAL_ERROR "${_nt} of ${_nm} messages in ${PROTO} have write-side contracts")
     endif()
 endif()
-file(STRINGS "${HEADER}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*_cached_size(_[0-9]+)?\\(")
+file(STRINGS "${HEADER}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*\\(")
 foreach(_t IN LISTS _types)
     set(_n 0)
     foreach(_line IN LISTS _defs)
@@ -45,8 +46,8 @@ foreach(_t IN LISTS _types)
             math(EXPR _n "${_n} + 1")
         endif()
     endforeach()
-    if(NOT _n EQUAL 1)
-        message(FATAL_ERROR "${_t}: ${_n} _cached_size functions, expected 1")
+    if(NOT _n EQUAL 2)
+        message(FATAL_ERROR "${_t}: ${_n} of _size and _cached_size found, expected 2")
     endif()
 endforeach()
 if(NOT _fcts)
@@ -61,7 +62,9 @@ file(WRITE "${_drive}" "#include \"${_name}\"\n")
 
 include(ProcessorCount)
 ProcessorCount(_nproc)
-if(_nproc EQUAL 0)
+# The slowest _size goals take up to a minute alone and miss the timeout once
+# more than four provers run at once; a proof that depends on load is not one.
+if(_nproc EQUAL 0 OR _nproc GREATER 4)
     set(_nproc 4)
 endif()
 
