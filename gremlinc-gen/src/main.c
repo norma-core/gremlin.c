@@ -82,7 +82,9 @@ run_pipeline(const struct args *args,
 	}
 	bool learn = false;
 	if ((err = needs_first_pass(arena, ctx.files, sources->count, &learn))) goto fail;
-	struct gremlinc_name_scope claimed = global_scope;
+	struct gremlinc_name_scope logic_scope;
+	gremlinc_name_scope_init(&logic_scope, arena);
+	struct gremlinc_name_scope claimed = global_scope, logic_claimed = logic_scope;
 	for (size_t i = 0; learn && i < sources->count; i++) {
 		struct gremlinc_writer w;
 		if (!gremlinc_writer_init_owned(&w, 64 * 1024)) {
@@ -90,12 +92,13 @@ run_pipeline(const struct args *args,
 			free(gs);
 			return 1;
 		}
-		err = emit_file(arena, &global_scope, &reserved, ctx.files[i],
+		err = emit_file(arena, &global_scope, &reserved, &logic_scope, ctx.files[i],
 				sources->items[i].path, &w);
 		gremlinc_writer_dispose(&w);
 		if (err != GREMLINP_OK) goto fail;
 	}
 	global_scope = claimed;
+	logic_scope = logic_claimed;
 
 	/* Emit one .pb.h per listed input — every file the caller passed
 	 * on the command line gets its own output. */
@@ -107,7 +110,7 @@ run_pipeline(const struct args *args,
 			return 1;
 		}
 
-		err = emit_file(arena, &global_scope, &reserved, ctx.files[i],
+		err = emit_file(arena, &global_scope, &reserved, &logic_scope, ctx.files[i],
 				sources->items[i].path, &w);
 		if (err != GREMLINP_OK) {
 			gremlinc_writer_dispose(&w);

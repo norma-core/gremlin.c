@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package wpw;
+
+enum Kind {
+    KIND_NONE = 0;
+    KIND_ONE = 1;
+}
+
+message Leaf {
+    uint64 id = 1;
+    bytes raw = 2;
+}
+
+message Mid {
+    Leaf leaf = 1;
+    Kind kind = 2;
+    repeated Kind kinds = 3;
+    repeated fixed64 stamps = 4;
+}
+
+// Every family the write side proves: siblings, three levels, repeated children.
+message Top {
+    uint64 seq = 1;
+    string name = 2;
+    Mid mid = 3;
+    Leaf first = 4;
+    repeated bytes chunks = 5;
+    repeated uint64 vals = 6;
+}
+
+message List {
+    uint32 n = 1;
+    repeated Leaf leaves = 2;
+}
+
+// A repeated message whose element has children and a sum of its own.
+message Pair {
+    Leaf a = 1;
+    Leaf b = 2;
+    repeated uint64 v = 3;
+}
+
+message Pairs {
+    repeated Pair items = 1;
+}
+
+// The remaining scalar kinds, so each logic size arm is generated.
+message Ints {
+    int32 a = 1;
+    int64 b = 2;
+    fixed32 c = 3;
+    sfixed32 d = 4;
+    sfixed64 e = 5;
+    fixed64 f = 6;
+}
+
+message Packs {
+    repeated int32 a = 1;
+    repeated int64 b = 2;
+    repeated uint32 c = 3;
+    repeated fixed32 d = 4;
+    repeated sfixed64 e = 5;
+    repeated bool f = 6;
+    repeated string g = 7;
+    repeated sfixed32 h = 8;
+}
