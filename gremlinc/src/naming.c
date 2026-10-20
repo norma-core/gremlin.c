@@ -16,12 +16,20 @@ static const char *const C_KEYWORDS[] = {
 };
 #define N_C_KEYWORDS (sizeof(C_KEYWORDS) / sizeof(C_KEYWORDS[0]))
 
+/* Not C, but an ACSL type name: as a field name it would make the contracts
+ * in generated code unparseable for Frama-C. */
+static const char *const ACSL_RESERVED[] = { "boolean" };
+#define N_ACSL_RESERVED (sizeof(ACSL_RESERVED) / sizeof(ACSL_RESERVED[0]))
+
 bool
 gremlinc_is_c_keyword(const char *name)
 {
 	if (name == NULL) return false;
 	for (size_t i = 0; i < N_C_KEYWORDS; i++) {
 		if (strcmp(C_KEYWORDS[i], name) == 0) return true;
+	}
+	for (size_t i = 0; i < N_ACSL_RESERVED; i++) {
+		if (strcmp(ACSL_RESERVED[i], name) == 0) return true;
 	}
 	return false;
 }
