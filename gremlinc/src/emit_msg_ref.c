@@ -31,7 +31,9 @@
 enum gremlinp_parsing_error
 gremlinc_msg_ref_emit_size_field(struct gremlinc_writer *w,
 				 const struct gremlind_field *f,
-				 const char *fname)
+				 const char *fname,
+				 const struct gremlinc_espec *sp,
+				 size_t fi)
 {
 	enum gremlinp_parsing_error err;
 	const char *tname = f->type.u.message->c_name;
@@ -43,6 +45,7 @@ gremlinc_msg_ref_emit_size_field(struct gremlinc_writer *w,
 	 * prefix AND the payload contribution. */
 	W("\tif (m->"); W(fname); W(" != NULL) {\n");
 	W("\t\tsize_t _child_size = "); W(tname); W("_size(m->"); W(fname); W(");\n");
+	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_MSG_SIZE_CHILD))) return err;
 	W("\t\ts += "); WI((int32_t)tag_bytes);
 	W("\n\t\t   + gremlin_varint_size(_child_size)");
 	W("\n\t\t   + _child_size;\n");

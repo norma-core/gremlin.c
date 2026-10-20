@@ -33,13 +33,16 @@
 enum gremlinp_parsing_error
 gremlinc_repeated_bytes_emit_size_field(struct gremlinc_writer *w,
 					const struct gremlind_field *f,
-					const char *fname)
+					const char *fname,
+					const struct gremlinc_espec *sp,
+					size_t fi)
 {
 	enum gremlinp_parsing_error err;
 	uint32_t packed = ((uint32_t)f->parsed.index << 3) | WT_LEN_PREFIX_NUM;
 	unsigned tag_bytes = (unsigned)gremlin_varint_size(packed);
 
 	W("\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
+	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_REPBYTES_BODY))) return err;
 	W("\t\ts += "); WI((int32_t)tag_bytes);
 	W("\n\t\t   + gremlin_varint_size(m->"); W(fname); W("[_i].len)");
 	W("\n\t\t   + m->"); W(fname); W("[_i].len;\n");

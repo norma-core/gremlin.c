@@ -1,6 +1,6 @@
-# Proves the write side of a generated header: the _cached_size getters, the
-# ghost helpers and the lemmas. Lemmas go in a second run: their induction
-# needs the tip prover.
+# Proves the write side of a generated header: every _size and _cached_size it
+# defines, the ghost helpers their proofs call, and the lemmas. Lemmas go in a
+# second run: their induction needs the tip prover.
 #
 #   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... -P verify_writer.cmake
 
@@ -8,7 +8,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Messages with write-side contracts are the ones that got a _tsize_nonneg ghost;
-# their getters and every ghost helper go on the list.
+# their writer functions and every ghost helper go on the list.
 file(STRINGS "${HEADER}" _ghosts REGEX "^  void [A-Za-z_][A-Za-z0-9_]*\\(")
 set(_fcts)
 foreach(_line IN LISTS _ghosts)
@@ -20,7 +20,7 @@ foreach(_line IN LISTS _ghosts)
     endif()
     if(_name MATCHES "^(.*)_tsize_nonneg$")
         set(_m ${CMAKE_MATCH_1})
-        list(APPEND _fcts ${_m}_cached_size)
+        list(APPEND _fcts ${_m}_size ${_m}_cached_size)
     endif()
 endforeach()
 if(NOT _fcts)

@@ -28,7 +28,9 @@
 enum gremlinp_parsing_error
 gremlinc_repeated_msg_emit_size_field(struct gremlinc_writer *w,
 				      const struct gremlind_field *f,
-				      const char *fname)
+				      const char *fname,
+				      const struct gremlinc_espec *sp,
+				      size_t fi)
 {
 	enum gremlinp_parsing_error err;
 	const char *tname = f->type.u.message->c_name;
@@ -41,12 +43,15 @@ gremlinc_repeated_msg_emit_size_field(struct gremlinc_writer *w,
 	 * NULL check per element instead of a ternary. */
 	W("\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
 	W("\t\tconst "); W(tname); W(" *_el = m->"); W(fname); W("[_i];\n");
+	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_REPMSG_BODY))) return err;
 	W("\t\tif (_el != NULL) {\n");
 	W("\t\t\tsize_t _child_size = "); W(tname); W("_size(_el);\n");
+	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_REPMSG_SIZE_CHILD))) return err;
 	W("\t\t\ts += "); WI((int32_t)tag_bytes);
 	W("\n\t\t\t   + gremlin_varint_size(_child_size)");
 	W("\n\t\t\t   + _child_size;\n");
 	W("\t\t} else {\n");
+	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_REPMSG_NULL))) return err;
 	W("\t\t\ts += "); WI((int32_t)tag_bytes); W(" + 1;\n");
 	W("\t\t}\n");
 	W("\t}\n");

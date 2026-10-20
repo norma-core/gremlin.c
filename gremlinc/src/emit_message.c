@@ -85,22 +85,24 @@ dispatch_size_field(struct gremlinc_writer *w,
 		    const char *fname,
 		    const char *default_lit,
 		    const struct map_slot_info *mkey,
-		    const struct map_slot_info *mval)
+		    const struct map_slot_info *mval,
+		    const struct gremlinc_espec *sp,
+		    size_t fi)
 {
 	if (field_is_map(f)) {
 		return gremlinc_map_emit_size_field(w, f, fname, mkey, mval);
 	}
 	if (field_is_repeated_bytes(f)) {
-		return gremlinc_repeated_bytes_emit_size_field(w, f, fname);
+		return gremlinc_repeated_bytes_emit_size_field(w, f, fname, sp, fi);
 	}
 	if (field_is_repeated_msg(f)) {
-		return gremlinc_repeated_msg_emit_size_field(w, f, fname);
+		return gremlinc_repeated_msg_emit_size_field(w, f, fname, sp, fi);
 	}
 	if (field_is_repeated_scalar(f)) {
-		return gremlinc_repeated_scalar_emit_size_field(w, f, fname);
+		return gremlinc_repeated_scalar_emit_size_field(w, f, fname, sp, fi);
 	}
 	if (f->type.kind == GREMLIND_TYPE_REF_MESSAGE) {
-		return gremlinc_msg_ref_emit_size_field(w, f, fname);
+		return gremlinc_msg_ref_emit_size_field(w, f, fname, sp, fi);
 	}
 	if (f->type.kind == GREMLIND_TYPE_REF_ENUM) {
 		return gremlinc_enum_ref_emit_size_field(w, f, fname, default_lit);
@@ -539,20 +541,26 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * `_size(const X *m)` API while mutating the cache. UB for
 	 * truly const-storage protos; in practice messages are built
 	 * mutable then encoded. */
+	if ((err = gremlinc_espec_size_contract(w, sp))) return err;
 	W("__attribute__((noinline, unused)) static size_t\n");
 	W(size_fn); W("(const "); W(tname); W(" *m)\n{\n");
 	W("\tsize_t s = 0;\n");
 	if (m->fields.count == 0) {
 		W("\t(void)m;\n");
 	}
+	if ((err = gremlinc_espec_size_start(w, sp))) return err;
 	for (size_t i = 0; i < m->fields.count; i++) {
+		if ((err = gremlinc_espec_size_field_before(w, sp, i))) return err;
 		err = dispatch_size_field(w, scope->arena,
 					  &m->fields.items[i], sinfos[i],
 					  fnames[i], defaults[i],
-					  &map_keys[i], &map_vals[i]);
+					  &map_keys[i], &map_vals[i], sp, i);
 		if (err != GREMLINP_OK) return err;
+		if ((err = gremlinc_espec_size_field_after(w, sp, i))) return err;
 	}
+	if ((err = gremlinc_espec_size_before_write(w, sp))) return err;
 	W("\t((" ); W(tname); W(" *)m)->_size = s;\n");
+	if ((err = gremlinc_espec_size_after_write(w, sp))) return err;
 	W("\treturn s;\n}\n\n");
 
 	/* ---- encode_at (worker) + encode (wrapper) ----
