@@ -96,3 +96,120 @@ gremlinc_default_check_rhs(enum scalar_kind k)
 	}
 }
 
+enum gremlinp_parsing_error
+gremlinc_emit_iter_ok(struct gremlinc_writer *w, const char *reader_ty,
+		      const char *fname, bool block)
+{
+	enum gremlinp_parsing_error err;
+
+	W("/*@ predicate "); W(reader_ty); W("_"); W(fname); W("_iter_ok(");
+	W(reader_ty); W("_"); W(fname); W("_iter it) =\n"
+	  "      it.offset <= it.src_len &&\n");
+	if (block) W("      it.block_end <= it.src_len &&\n");
+	W("      (it.src_len == 0 || \\valid_read(it.src + (0 .. it.src_len - 1)));\n"
+	  "*/\n\n");
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_iter_count_spec(struct gremlinc_writer *w, const char *fname)
+{
+	enum gremlinp_parsing_error err;
+
+	W("/*@ requires r == \\null || \\valid_read(r);\n"
+	  "    assigns \\nothing;\n"
+	  "    ensures r != \\null ==> \\result == r->"); W(fname);
+	W("_count;\n*/\n");
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_iter_begin_spec(struct gremlinc_writer *w, const char *reader_ty,
+			      const char *reader_ok, const char *fname)
+{
+	enum gremlinp_parsing_error err;
+
+	W("/*@ requires r == \\null || (\\valid_read(r) && "); W(reader_ok);
+	W("(r, r->src_len) &&\n"
+	  "               (r->src_len == 0 ||\n"
+	  "                \\valid_read(r->src + (0 .. r->src_len - 1))));\n"
+	  "    assigns \\nothing;\n"
+	  "    ensures "); W(reader_ty); W("_"); W(fname); W("_iter_ok(\\result);\n"
+	  "    ensures r != \\null && r->"); W(fname);
+	W("_count > 0 ==>\n"
+	  "              \\result.src == r->src && \\result.src_len == r->src_len &&\n"
+	  "              \\result.count_remaining == r->"); W(fname); W("_count;\n"
+	  "    ensures r == \\null || r->"); W(fname);
+	W("_count == 0 ==>\n"
+	  "              \\result.src_len == 0 && \\result.count_remaining == 0;\n*/\n");
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_iter_next_spec(struct gremlinc_writer *w, const char *reader_ty,
+			     const char *fname, const char *out_extra,
+			     const char *child_ty)
+{
+	enum gremlinp_parsing_error err;
+
+	W("/*@ requires \\valid(it) && \\valid(out);\n"
+	  "    requires "); W(reader_ty); W("_"); W(fname); W("_iter_ok(*it);\n"
+	  "    requires \\separated(it, out, it->src + (0 .. it->src_len - 1));\n"
+	  "    assigns *it, *out;\n"
+	  "    ensures "); W(reader_ty); W("_"); W(fname); W("_iter_ok(*it);\n"
+	  "    ensures it->src == \\old(it->src) && it->src_len == \\old(it->src_len);\n");
+	if (out_extra != NULL) {
+		W("    ensures "); W(out_extra); W(";\n");
+	}
+	if (child_ty != NULL &&
+	    (err = gremlinc_emit_child_reader_ok(w, child_ty, "out")) != GREMLINP_OK)
+		return err;
+	if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
+	W("*/\n");
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_error_set(struct gremlinc_writer *w)
+{
+	enum gremlinp_parsing_error err;
+
+	W("    ensures \\result == GREMLIN_OK || \\result == GREMLIN_ERROR_TRUNCATED ||\n"
+	  "            \\result == GREMLIN_ERROR_OVERFLOW ||\n"
+	  "            \\result == GREMLIN_ERROR_INVALID_WIRE_TYPE ||\n"
+	  "            \\result == GREMLIN_ERROR_INVALID_FIELD_NUM;\n");
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_child_reader_ok(struct gremlinc_writer *w, const char *child_ty,
+			      const char *out)
+{
+	enum gremlinp_parsing_error err;
+
+	W("    ensures \\result == GREMLIN_OK ==>\n"
+	  "              "); W(child_ty); W("_reader_ok("); W(out); W(", "); W(out);
+	W("->src_len) &&\n"
+	  "              ("); W(out); W("->src_len == 0 ||\n"
+	  "               \\valid_read("); W(out); W("->src + (0 .. "); W(out);
+	W("->src_len - 1)));\n");
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_iter_scan_spec(struct gremlinc_writer *w, const char *indent,
+			     bool block)
+{
+	enum gremlinp_parsing_error err;
+
+	W(indent); W("/*@ loop invariant it->offset <= it->src_len;\n");
+	if (block) {
+		W(indent); W("    loop invariant it->block_end <= it->src_len;\n");
+		W(indent); W("    loop assigns it->offset, it->block_end;\n");
+	} else {
+		W(indent); W("    loop assigns it->offset;\n");
+	}
+	W(indent); W("    loop variant it->src_len - it->offset;\n");
+	W(indent); W("*/\n");
+	return GREMLINP_OK;
+}

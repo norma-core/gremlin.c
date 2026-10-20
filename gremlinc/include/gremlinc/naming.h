@@ -85,7 +85,7 @@ const char *				gremlinc_name_scope_mangle(struct gremlinc_name_scope *s,
 const char *				gremlinc_cname_for_type(struct gremlinc_name_scope *s,
 								const struct gremlind_scoped_name *sn);
 
-/* True if `name` is a C11 keyword (44 total). */
+/* True if `name` is a C11 keyword (44 total) or a word ACSL reserves. */
 bool					gremlinc_is_c_keyword(const char *name);
 
 /*

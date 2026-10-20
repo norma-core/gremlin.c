@@ -46,7 +46,7 @@ runs Frama-C WP over [`runtime/include/gremlin.h`](runtime/include/gremlin.h)
 through [`runtime/tests/verify.c`](runtime/tests/verify.c), which
 references the static-inline functions so WP checks their bodies.
 
-Current runtime proof: `719 / 719` WP obligations. The exact function
+Current runtime proof: `724 / 724` WP obligations. The exact function
 set is `RUNTIME_WP_FCTS` in [`runtime/CMakeLists.txt`](runtime/CMakeLists.txt):
 writer setup, varint/fixed size helpers, `_encode_at` writers,
 varint/fixed/bytes decoders, `gremlin_skip_data`, zigzag conversions,
@@ -57,6 +57,23 @@ Run from the build directory:
 ```bash
 cmake --build . --target verify-runtime
 ```
+
+Generated code is proved in `integration-test`, on fixtures generated
+at build time: `verify-generated` covers the read side and
+`verify-generated-write` the write side (`_size`, `_encode_at`,
+`_encode`, `_cached_size`, their ghost helpers and lemmas). Both take
+the function list from the generated header and need CMake 3.19 or
+newer:
+
+```bash
+cmake -S integration-test -B build-it
+cmake --build build-it --target verify-generated verify-generated-write
+```
+
+The write side covers messages built from varint and fixed scalars (a
+singular bool aside), bytes, strings, enums, message fields and repeated
+message, bytes and packed fields; other messages are generated as
+before, without write-side contracts.
 
 The repository also contains other proofs, such as descriptor arena
 allocation and selected code-generator helpers. Parser proofs are useful
