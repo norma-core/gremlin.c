@@ -44,3 +44,22 @@ message All {
     // A C identifier but an ACSL type name; the generator must rename it.
     bool boolean = 28;
 }
+
+// Mutually recursive: each one's contracts name the other's reader, which
+// the header has to declare before either.
+message Ping {
+    Pong pong = 1;
+    repeated Pong pongs = 2;
+    map<int32, Pong> by_id = 3;
+}
+
+message Pong {
+    Ping ping = 1;
+    int32 n = 2;
+}
+
+// Named like Inner's reader predicate, so the predicate is renamed and the
+// contracts that name it must follow.
+message Inner_reader_ok {
+    int32 x = 1;
+}

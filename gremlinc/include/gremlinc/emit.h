@@ -82,4 +82,15 @@ enum gremlinp_parsing_error	gremlinc_emit_message(struct gremlinc_writer *w,
 enum gremlinp_parsing_error	gremlinc_emit_message_forward(struct gremlinc_writer *w,
 							      const struct gremlind_message *m);
 
+/*
+ * gremlinc_emit_message, also reporting where in `w` the reader struct and
+ * its predicate begin and end. A file whose contracts name a reader before
+ * its message is emitted (mutual recursion) moves that span up front.
+ */
+enum gremlinp_parsing_error	gremlinc_emit_message_marked(struct gremlinc_writer *w,
+							     struct gremlinc_name_scope *scope,
+							     const struct gremlind_message *m,
+							     size_t *decl_start,
+							     size_t *decl_end);
+
 #endif /* !_GREMLINC_EMIT_H_ */

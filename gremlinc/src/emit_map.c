@@ -572,7 +572,7 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 		W("    ensures \\result == GREMLIN_OK ==> "); W(MAP_VALUE_SPAN); W(";\n");
 	}
 	if (val->kind == GREMLINC_MS_MESSAGE &&
-	    (err = gremlinc_emit_child_reader_ok(w, val->msg_ref->c_name, "out_value")) != GREMLINP_OK)
+	    (err = gremlinc_emit_child_reader_ok(w, val->msg_ref, "out_value")) != GREMLINP_OK)
 		return err;
 	if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
 	W("*/\n");
@@ -615,9 +615,10 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 		W("\t    loop invariant "); W(MAP_VALUE_SPAN); W(";\n");
 	}
 	if (val->kind == GREMLINC_MS_MESSAGE) {
-		const char *tn = val->msg_ref->c_name;
-		W("\t    loop invariant "); W(tn);
-		W("_reader_ok(out_value, out_value->src_len) &&\n"
+		W("\t    loop invariant ");
+		if ((err = gremlinc_emit_reader_ok_name(w, val->msg_ref)) != GREMLINP_OK)
+			return err;
+		W("(out_value, out_value->src_len) &&\n"
 		  "\t                   (out_value->src_len == 0 ||\n"
 		  "\t                    \\valid_read(out_value->src + (0 .. out_value->src_len - 1)));\n");
 	}

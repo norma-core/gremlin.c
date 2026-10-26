@@ -159,7 +159,8 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	W("\treturn it;\n}\n\n");
 
 	/* next: decode current bytes, init child reader, advance */
-	if ((err = gremlinc_emit_iter_next_spec(w, reader_ty, fname, NULL, tname)) != GREMLINP_OK) return err;
+	if ((err = gremlinc_emit_iter_next_spec(w, reader_ty, fname, NULL,
+	    f->type.u.message)) != GREMLINP_OK) return err;
 	W("static inline enum gremlin_error\n");
 	W(reader_ty); W("_"); W(fname); W("_next(");
 	W(reader_ty); W("_"); W(fname); W("_iter *it, "); W(tname);

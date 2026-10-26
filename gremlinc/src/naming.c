@@ -251,3 +251,23 @@ gremlinc_assign_c_names(struct gremlinc_name_scope *s, struct gremlind_file *fil
 	}
 	return GREMLINP_OK;
 }
+
+enum gremlinp_parsing_error
+gremlinc_assign_reader_names(struct gremlinc_name_scope *s, struct gremlind_file *file)
+{
+	static const char suffix[] = "_reader_ok";
+
+	if (s == NULL || file == NULL) return GREMLINP_ERROR_NULL_POINTER;
+	for (size_t i = 0; i < file->messages.count; i++) {
+		struct gremlind_message *m = &file->messages.items[i];
+		if (m->c_name == NULL) return GREMLINP_ERROR_NULL_POINTER;
+		size_t n = strlen(m->c_name);
+		char *raw = gremlind_arena_alloc(s->arena, n + sizeof(suffix));
+		if (raw == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		memcpy(raw, m->c_name, n);
+		memcpy(raw + n, suffix, sizeof(suffix));
+		m->c_reader_ok = gremlinc_name_scope_mangle(s, raw, n + sizeof(suffix) - 1);
+		if (m->c_reader_ok == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+	}
+	return GREMLINP_OK;
+}

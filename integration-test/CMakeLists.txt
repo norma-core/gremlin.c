@@ -87,6 +87,7 @@ if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)
             -DHEADER=${CMAKE_CURRENT_BINARY_DIR}/wp_fixture/wp_fixture.pb.h
             -DRUNTIME_INCLUDE=${REPO_ROOT}/runtime/include
             -DREPORT=${CMAKE_CURRENT_BINARY_DIR}/verify-generated.json
+            -DCALLERS=${CMAKE_CURRENT_SOURCE_DIR}/verify/wp_callers.c
             -P ${CMAKE_CURRENT_SOURCE_DIR}/verify/verify_reader.cmake
         DEPENDS wp_fixture_generate
         COMMENT "WP: read side of generated code"

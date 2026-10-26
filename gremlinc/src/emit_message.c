@@ -347,6 +347,15 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 		      struct gremlinc_name_scope *scope,
 		      const struct gremlind_message *m)
 {
+	return gremlinc_emit_message_marked(w, scope, m, NULL, NULL);
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_message_marked(struct gremlinc_writer *w,
+			     struct gremlinc_name_scope *scope,
+			     const struct gremlind_message *m,
+			     size_t *decl_start, size_t *decl_end)
+{
 	if (w == NULL || scope == NULL || m == NULL) {
 		return GREMLINP_ERROR_NULL_POINTER;
 	}
@@ -367,7 +376,8 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	const char *encode_fn	   = claim_join2(scope, tname, "_encode");
 	const char *reader_ty	   = claim_join2(scope, tname, "_reader");
 	const char *reader_init_fn = claim_join2(scope, reader_ty, "_init");
-	const char *reader_ok	   = claim_join2(scope, reader_ty, "_ok");
+	const char *reader_ok	   = m->c_reader_ok != NULL ? m->c_reader_ok :
+				     claim_join2(scope, reader_ty, "_ok");
 	if (!size_fn || !encode_fn || !reader_ty || !reader_init_fn || !reader_ok) {
 		return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
@@ -591,6 +601,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 	 * is pre-registered in the member scope above.  Has-bits resolve
 	 * the "absent on wire" vs "set to zero" ambiguity that sentinel
 	 * defaults can't express. */
+	if (decl_start != NULL) *decl_start = w->offset;
 	W("typedef struct "); W(reader_ty); W(" {\n");
 	W("\tconst uint8_t\t*src;\n");
 	W("\tsize_t\t\t src_len;\n");
@@ -643,6 +654,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 		}
 	}
 	W(";\n*/\n\n");
+	if (decl_end != NULL) *decl_end = w->offset;
 
 	/* ---- reader init ---- */
 	W("/*@ requires \\valid(r);\n"
@@ -738,7 +750,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 			  "                \\valid_read(r->src + (0 .. r->src_len - 1))) &&\n"
 			  "               \\separated(out, r, r->src + (0 .. r->src_len - 1)));\n"
 			  "    assigns *out;\n");
-			if ((err = gremlinc_emit_child_reader_ok(w, ttarget, "out")) != GREMLINP_OK)
+			if ((err = gremlinc_emit_child_reader_ok(w, fld->type.u.message, "out")) != GREMLINP_OK)
 				return err;
 			if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
 			W("*/\n");
@@ -763,7 +775,15 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 		W("/*@ requires r == \\null || \\valid_read(r);\n"
 		  "    assigns \\nothing;\n"
 		  "    ensures r != \\null && r->_has."); W(fnames[i]);
-		W(" ==> \\result == r->"); W(fnames[i]); W(";\n*/\n");
+		W(" ==> \\result == r->"); W(fnames[i]); W(";\n");
+		/* Without it a caller cannot show that b.len > 0 makes b.data
+		 * readable. A [default] literal stays unspecified: WP does not
+		 * prove a string literal readable. */
+		if (field_is_bytes(fld) && !fld->has_default) {
+			W("    ensures !(r != \\null && r->_has."); W(fnames[i]);
+			W(") ==> \\result.data == \\null && \\result.len == 0;\n");
+		}
+		W("*/\n");
 		W("static inline "); W(rt); W("\n");
 		W(getter_fns[i]);
 		W("(const "); W(reader_ty); W(" *r)\n{\n");

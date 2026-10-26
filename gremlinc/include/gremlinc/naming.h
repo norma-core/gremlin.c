@@ -125,4 +125,13 @@ struct gremlind_file;	/* fwd — declared in gremlind/nodes.h */
 enum gremlinp_parsing_error		gremlinc_assign_c_names(struct gremlinc_name_scope *s,
 								struct gremlind_file *file);
 
+/*
+ * Claims each message's reader predicate name, `<M>_reader_ok` or its
+ * mangled form, into `c_reader_ok`. Call once per file after
+ * gremlinc_assign_c_names has run for every file, so a type name always
+ * wins a collision with a predicate name.
+ */
+enum gremlinp_parsing_error		gremlinc_assign_reader_names(struct gremlinc_name_scope *s,
+								     struct gremlind_file *file);
+
 #endif /* !_GREMLINC_NAMING_H_ */

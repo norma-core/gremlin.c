@@ -148,7 +148,7 @@ gremlinc_emit_iter_begin_spec(struct gremlinc_writer *w, const char *reader_ty,
 enum gremlinp_parsing_error
 gremlinc_emit_iter_next_spec(struct gremlinc_writer *w, const char *reader_ty,
 			     const char *fname, const char *out_extra,
-			     const char *child_ty)
+			     const struct gremlind_message *child)
 {
 	enum gremlinp_parsing_error err;
 
@@ -161,8 +161,8 @@ gremlinc_emit_iter_next_spec(struct gremlinc_writer *w, const char *reader_ty,
 	if (out_extra != NULL) {
 		W("    ensures "); W(out_extra); W(";\n");
 	}
-	if (child_ty != NULL &&
-	    (err = gremlinc_emit_child_reader_ok(w, child_ty, "out")) != GREMLINP_OK)
+	if (child != NULL &&
+	    (err = gremlinc_emit_child_reader_ok(w, child, "out")) != GREMLINP_OK)
 		return err;
 	if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
 	W("*/\n");
@@ -182,13 +182,29 @@ gremlinc_emit_error_set(struct gremlinc_writer *w)
 }
 
 enum gremlinp_parsing_error
-gremlinc_emit_child_reader_ok(struct gremlinc_writer *w, const char *child_ty,
-			      const char *out)
+gremlinc_emit_reader_ok_name(struct gremlinc_writer *w, const struct gremlind_message *m)
+{
+	enum gremlinp_parsing_error err;
+
+	/* Without gremlinc_assign_reader_names the name is the unmangled one. */
+	if (m->c_reader_ok != NULL) {
+		W(m->c_reader_ok);
+	} else {
+		W(m->c_name); W("_reader_ok");
+	}
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_emit_child_reader_ok(struct gremlinc_writer *w,
+			      const struct gremlind_message *child, const char *out)
 {
 	enum gremlinp_parsing_error err;
 
 	W("    ensures \\result == GREMLIN_OK ==>\n"
-	  "              "); W(child_ty); W("_reader_ok("); W(out); W(", "); W(out);
+	  "              ");
+	if ((err = gremlinc_emit_reader_ok_name(w, child)) != GREMLINP_OK) return err;
+	W("("); W(out); W(", "); W(out);
 	W("->src_len) &&\n"
 	  "              ("); W(out); W("->src_len == 0 ||\n"
 	  "               \\valid_read("); W(out); W("->src + (0 .. "); W(out);

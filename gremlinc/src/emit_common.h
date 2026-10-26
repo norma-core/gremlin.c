@@ -103,13 +103,16 @@ enum gremlinp_parsing_error	gremlinc_emit_iter_next_spec(struct gremlinc_writer 
 							const char *reader_ty,
 							const char *fname,
 							const char *out_extra,
-							const char *child_ty);
+							const struct gremlind_message *child);
 /* `    ensures` clause listing every gremlin_error a reader can return. */
 enum gremlinp_parsing_error	gremlinc_emit_error_set(struct gremlinc_writer *w);
 /* What a reader that a call left in `out` guarantees once it returned OK. */
 enum gremlinp_parsing_error	gremlinc_emit_child_reader_ok(struct gremlinc_writer *w,
-							const char *child_ty,
+							const struct gremlind_message *child,
 							const char *out);
+/* The child's reader predicate, by the name the mangler gave it. */
+enum gremlinp_parsing_error	gremlinc_emit_reader_ok_name(struct gremlinc_writer *w,
+							const struct gremlind_message *m);
 /* Annotation for a loop that scans tags forward; `block` when it may also
  * set block_end. */
 enum gremlinp_parsing_error	gremlinc_emit_iter_scan_spec(struct gremlinc_writer *w,

@@ -3,6 +3,74 @@
 
 #include "emit_file.h"
 
+/* An earlier message in the order has a field of message at: its contracts
+ * then name at's reader before at is emitted, which mutual recursion does. */
+static bool
+named_before(const struct gremlind_message_order *o, size_t at)
+{
+	const struct gremlind_message *m = o->items[at];
+
+	for (size_t i = 0; i < at; i++) {
+		const struct gremlind_message *p = o->items[i];
+		for (size_t k = 0; k < p->fields.count; k++) {
+			const struct gremlind_type_ref *t = &p->fields.items[k].type;
+			if (t->kind == GREMLIND_TYPE_REF_MAP) t = t->u.map.value;
+			if (t != NULL && t->kind == GREMLIND_TYPE_REF_MESSAGE &&
+			    t->u.message == m)
+				return true;
+		}
+	}
+	return false;
+}
+
+/* Every message into its own buffer, in the same order so the mangler
+ * claims the same names; then the reader struct and predicate of each
+ * message named before it is emitted go first. */
+static enum gremlinp_parsing_error
+emit_messages_hoisted(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
+		      const struct gremlind_message_order *o)
+{
+	enum gremlinp_parsing_error err = GREMLINP_ERROR_OUT_OF_MEMORY;
+	struct gremlinc_writer *bufs = calloc(o->count, sizeof(*bufs));
+	size_t *start = calloc(o->count, sizeof(*start));
+	size_t *end = calloc(o->count, sizeof(*end));
+	size_t made = 0;
+
+	if (bufs == NULL || start == NULL || end == NULL) goto out;
+	for (; made < o->count; made++) {
+		if (!gremlinc_writer_init_owned(&bufs[made], 16 * 1024)) goto out;
+		err = gremlinc_emit_message_marked(&bufs[made], scope, o->items[made],
+						   &start[made], &end[made]);
+		if (err != GREMLINP_OK) {
+			made++;
+			goto out;
+		}
+	}
+	for (size_t i = 0; i < o->count; i++) {
+		if (!named_before(o, i)) continue;
+		err = gremlinc_write(w, bufs[i].buf + start[i], end[i] - start[i]);
+		if (err != GREMLINP_OK) goto out;
+	}
+	for (size_t i = 0; i < o->count; i++) {
+		const struct gremlinc_writer *b = &bufs[i];
+		if (!named_before(o, i)) {
+			err = gremlinc_write(w, b->buf, b->offset);
+		} else {
+			err = gremlinc_write(w, b->buf, start[i]);
+			if (err == GREMLINP_OK)
+				err = gremlinc_write(w, b->buf + end[i], b->offset - end[i]);
+		}
+		if (err != GREMLINP_OK) goto out;
+	}
+	err = GREMLINP_OK;
+out:
+	for (size_t i = 0; i < made; i++) gremlinc_writer_dispose(&bufs[i]);
+	free(bufs);
+	free(start);
+	free(end);
+	return err;
+}
+
 static char *
 derive_guard(const char *src_path)
 {
@@ -97,9 +165,17 @@ emit_file(struct gremlind_arena *arena,
 		err = gremlinc_emit_message_forward(w, order.predeclare[i]);
 		if (err != GREMLINP_OK) goto out;
 	}
-	for (size_t i = 0; i < order.count; i++) {
-		err = gremlinc_emit_message(w, global_scope, order.items[i]);
+	bool hoist = false;
+	for (size_t i = 0; i < order.count && !hoist; i++)
+		hoist = named_before(&order, i);
+	if (hoist) {
+		err = emit_messages_hoisted(w, global_scope, &order);
 		if (err != GREMLINP_OK) goto out;
+	} else {
+		for (size_t i = 0; i < order.count; i++) {
+			err = gremlinc_emit_message(w, global_scope, order.items[i]);
+			if (err != GREMLINP_OK) goto out;
+		}
 	}
 
 	gremlinc_writer_trim_trailing_blank(w);

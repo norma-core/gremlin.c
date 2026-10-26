@@ -49,6 +49,10 @@ run_pipeline(const struct args *args,
 		err = gremlinc_assign_c_names(&global_scope, ctx.files[i]);
 		if (err) goto fail;
 	}
+	for (size_t i = 0; i < ctx.n_sources; i++) {
+		err = gremlinc_assign_reader_names(&global_scope, ctx.files[i]);
+		if (err) goto fail;
+	}
 
 	/* Emit one .pb.h per listed input — every file the caller passed
 	 * on the command line gets its own output. */

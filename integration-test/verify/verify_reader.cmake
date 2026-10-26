@@ -3,6 +3,9 @@
 # is read from the header itself, so a new field family needs no edit here.
 #
 #   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... -P verify_reader.cmake
+#
+# CALLERS, optional, is a C file of caller_* functions over the header,
+# proved alongside it.
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
@@ -18,6 +21,13 @@ endforeach()
 if(NOT _fcts)
     message(FATAL_ERROR "no reader functions found in ${HEADER}")
 endif()
+if(CALLERS)
+    file(STRINGS "${CALLERS}" _callers REGEX "^caller_[A-Za-z0-9_]*\\(")
+    foreach(_line IN LISTS _callers)
+        string(REGEX MATCH "^caller_[A-Za-z0-9_]*" _name "${_line}")
+        list(APPEND _fcts ${_name})
+    endforeach()
+endif()
 list(APPEND _fcts
     gremlin_varint32_decode gremlin_varint_decode gremlin_bytes_decode
     gremlin_skip_data gremlin_fixed32_decode gremlin_fixed64_decode
@@ -29,6 +39,9 @@ get_filename_component(_dir "${HEADER}" DIRECTORY)
 get_filename_component(_name "${HEADER}" NAME)
 set(_drive "${_dir}/verify_reader_drive.c")
 file(WRITE "${_drive}" "#include \"${_name}\"\n")
+if(CALLERS)
+    file(APPEND "${_drive}" "#include \"${CALLERS}\"\n")
+endif()
 
 include(ProcessorCount)
 ProcessorCount(_nproc)
