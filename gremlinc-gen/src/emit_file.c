@@ -38,7 +38,10 @@ emit_messages_hoisted(struct gremlinc_writer *w, struct gremlinc_name_scope *sco
 
 	if (bufs == NULL || start == NULL || end == NULL) goto out;
 	for (; made < o->count; made++) {
-		if (!gremlinc_writer_init_owned(&bufs[made], 16 * 1024)) goto out;
+		if (!gremlinc_writer_init_owned(&bufs[made], 16 * 1024)) {
+			err = GREMLINP_ERROR_OUT_OF_MEMORY;
+			goto out;
+		}
 		err = gremlinc_emit_message_marked(&bufs[made], scope, o->items[made],
 						   &start[made], &end[made]);
 		if (err != GREMLINP_OK) {

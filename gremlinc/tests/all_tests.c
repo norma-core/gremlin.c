@@ -3,6 +3,7 @@
 extern void naming_test(void);
 extern void const_convert_test(void);
 extern void enum_test(void);
+extern void message_test(void);
 
 int main(void)
 {
@@ -11,6 +12,7 @@ int main(void)
     naming_test();
     const_convert_test();
     enum_test();
+    message_test();
 
     printf("\nAll gremlinc tests passed!\n");
     return 0;
