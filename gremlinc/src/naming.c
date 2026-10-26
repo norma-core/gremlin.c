@@ -18,7 +18,7 @@ static const char *const C_KEYWORDS[] = {
 
 /* Not C, but an ACSL type name: as a field name it would make the contracts
  * in generated code unparseable for Frama-C. */
-static const char *const ACSL_RESERVED[] = { "boolean" };
+static const char *const ACSL_RESERVED[] = { "boolean", "alignof" };
 #define N_ACSL_RESERVED (sizeof(ACSL_RESERVED) / sizeof(ACSL_RESERVED[0]))
 
 bool
@@ -150,6 +150,18 @@ scope_register(struct gremlinc_name_scope *s, const char *name)
 	return GREMLINP_OK;
 }
 
+enum gremlinp_parsing_error
+gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s)
+{
+	static const char *const names[] = { "integer", "gremlin_span_in" };
+
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (scope_register(s, names[i]) != GREMLINP_OK)
+			return GREMLINP_ERROR_OUT_OF_MEMORY;
+	}
+	return GREMLINP_OK;
+}
+
 /*
  * Duplicate `src[0..len-1]` into the arena as a NUL-terminated cstring,
  * optionally with a suffix. pass suffix=NULL / suffix_len=0 for a plain copy.
@@ -248,26 +260,6 @@ gremlinc_assign_c_names(struct gremlinc_name_scope *s, struct gremlind_file *fil
 		struct gremlind_message *m = &file->messages.items[i];
 		m->c_name = gremlinc_cname_for_type(s, &m->scoped_name);
 		if (m->c_name == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
-	}
-	return GREMLINP_OK;
-}
-
-enum gremlinp_parsing_error
-gremlinc_assign_reader_names(struct gremlinc_name_scope *s, struct gremlind_file *file)
-{
-	static const char suffix[] = "_reader_ok";
-
-	if (s == NULL || file == NULL) return GREMLINP_ERROR_NULL_POINTER;
-	for (size_t i = 0; i < file->messages.count; i++) {
-		struct gremlind_message *m = &file->messages.items[i];
-		if (m->c_name == NULL) return GREMLINP_ERROR_NULL_POINTER;
-		size_t n = strlen(m->c_name);
-		char *raw = gremlind_arena_alloc(s->arena, n + sizeof(suffix));
-		if (raw == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
-		memcpy(raw, m->c_name, n);
-		memcpy(raw + n, suffix, sizeof(suffix));
-		m->c_reader_ok = gremlinc_name_scope_mangle(s, raw, n + sizeof(suffix) - 1);
-		if (m->c_reader_ok == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
 	return GREMLINP_OK;
 }

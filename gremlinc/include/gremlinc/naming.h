@@ -60,6 +60,10 @@ struct gremlinc_name_scope {
 void					gremlinc_name_scope_init(struct gremlinc_name_scope *s,
 								 struct gremlind_arena *arena);
 
+/* Takes the logic names the read contracts use, which a type named the same
+ * would hide from Frama-C. */
+enum gremlinp_parsing_error		gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s);
+
 /* True if `name` is already registered in the scope. */
 bool					gremlinc_name_scope_has(const struct gremlinc_name_scope *s,
 								const char *name);
@@ -124,14 +128,5 @@ const char *				gremlinc_to_snake_case(struct gremlind_arena *arena,
 struct gremlind_file;	/* fwd — declared in gremlind/nodes.h */
 enum gremlinp_parsing_error		gremlinc_assign_c_names(struct gremlinc_name_scope *s,
 								struct gremlind_file *file);
-
-/*
- * Claims each message's reader predicate name, `<M>_reader_ok` or its
- * mangled form, into `c_reader_ok`. Call once per file after
- * gremlinc_assign_c_names has run for every file, so a type name always
- * wins a collision with a predicate name.
- */
-enum gremlinp_parsing_error		gremlinc_assign_reader_names(struct gremlinc_name_scope *s,
-								     struct gremlind_file *file);
 
 #endif /* !_GREMLINC_NAMING_H_ */

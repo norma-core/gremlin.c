@@ -58,6 +58,11 @@ Run from the build directory:
 cmake --build . --target verify-runtime
 ```
 
+Generated readers carry contracts too: `verify-generated` in
+[`integration-test`](integration-test/CMakeLists.txt) proves every reader
+function of a fixture with one field of every family, and callers built
+on them: `8187 / 8187` WP obligations.
+
 The repository also contains other proofs, such as descriptor arena
 allocation and selected code-generator helpers. Parser proofs are useful
 for the compiler itself, but they are not the proof surface generated

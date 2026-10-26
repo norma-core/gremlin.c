@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,27 @@
 #include "emit_file.h"
 #include "io.h"
 #include "sources.h"
+
+/* Whether a contract may name a message not emitted yet: mutual recursion,
+ * or an import listed after the file importing it. */
+static enum gremlinp_parsing_error
+needs_first_pass(struct gremlind_arena *arena, struct gremlind_file **files, size_t n,
+		 bool *out)
+{
+	*out = false;
+	for (size_t i = 0; i < n && !*out; i++) {
+		enum gremlinp_parsing_error err = emit_file_names_ahead(arena, files[i], out);
+		if (err != GREMLINP_OK) return err;
+		for (size_t k = 0; k < files[i]->imports.count && !*out; k++) {
+			const struct gremlind_file *dep = files[i]->imports.items[k].resolved;
+			bool before = false;
+			for (size_t j = 0; j < i && !before; j++)
+				before = files[j] == dep;
+			if (!before) *out = true;
+		}
+	}
+	return GREMLINP_OK;
+}
 
 static int
 run_pipeline(const struct args *args,
@@ -45,14 +67,30 @@ run_pipeline(const struct args *args,
 
 	struct gremlinc_name_scope global_scope;
 	gremlinc_name_scope_init(&global_scope, arena);
+	if ((err = gremlinc_name_scope_reserve_logic(&global_scope))) goto fail;
 	for (size_t i = 0; i < ctx.n_sources; i++) {
 		err = gremlinc_assign_c_names(&global_scope, ctx.files[i]);
 		if (err) goto fail;
 	}
-	for (size_t i = 0; i < ctx.n_sources; i++) {
-		err = gremlinc_assign_reader_names(&global_scope, ctx.files[i]);
-		if (err) goto fail;
+
+	/* Learn every predicate name first, then roll the scope back so the
+	 * real pass claims the same names a single pass would. */
+	bool learn = false;
+	if ((err = needs_first_pass(arena, ctx.files, sources->count, &learn))) goto fail;
+	struct gremlinc_name_scope claimed = global_scope;
+	for (size_t i = 0; learn && i < sources->count; i++) {
+		struct gremlinc_writer w;
+		if (!gremlinc_writer_init_owned(&w, 64 * 1024)) {
+			fprintf(stderr, "gremlinc-gen: writer init failed\n");
+			free(gs);
+			return 1;
+		}
+		err = emit_file(arena, &global_scope, ctx.files[i],
+				sources->items[i].path, &w);
+		gremlinc_writer_dispose(&w);
+		if (err != GREMLINP_OK) goto fail;
 	}
+	global_scope = claimed;
 
 	/* Emit one .pb.h per listed input — every file the caller passed
 	 * on the command line gets its own output. */

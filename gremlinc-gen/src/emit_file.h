@@ -29,4 +29,10 @@ enum gremlinp_parsing_error	emit_file(struct gremlind_arena *arena,
 					  const char *src_path,
 					  struct gremlinc_writer *w);
 
+/* Whether a message of `file` is named by a contract before it is emitted,
+ * as in mutual recursion; a message holding only itself is not. */
+enum gremlinp_parsing_error	emit_file_names_ahead(struct gremlind_arena *arena,
+						      const struct gremlind_file *file,
+						      bool *out);
+
 #endif /* !_GREMLINC_GEN_EMIT_FILE_H_ */

@@ -77,7 +77,7 @@ add_test(NAME integration_test COMMAND integration_test)
 gremlinc_generate(
     TARGET       wp_fixture
     IMPORTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/verify
-    PROTOS       wp_fixture.proto
+    PROTOS       wp_fixture.proto wp_defaults.proto
 )
 find_program(FRAMAC frama-c)
 if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)

@@ -3,6 +3,7 @@
 
 #include "gremlin.h"
 #include "gremlinc/emit.h"
+#include "gremlinc/const_convert.h"
 #include "gremlinc/naming.h"
 
 #include "emit_common.h"
@@ -376,11 +377,12 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	const char *encode_fn	   = claim_join2(scope, tname, "_encode");
 	const char *reader_ty	   = claim_join2(scope, tname, "_reader");
 	const char *reader_init_fn = claim_join2(scope, reader_ty, "_init");
-	const char *reader_ok	   = m->c_reader_ok != NULL ? m->c_reader_ok :
-				     claim_join2(scope, reader_ty, "_ok");
+	const char *reader_ok	   = claim_join2(scope, reader_ty, "_ok");
 	if (!size_fn || !encode_fn || !reader_ty || !reader_init_fn || !reader_ok) {
 		return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
+	/* Kept for the contracts of messages that hold this one. */
+	((struct gremlind_message *)m)->c_reader_ok = reader_ok;
 
 	/* Per-message member scope. Pre-register the reader struct's
 	 * housekeeping fields so a proto field named "src" or "src_len"
@@ -411,6 +413,7 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	 * unpacked wire form.  Populated only when
 	 * `field_is_repeated_scalar(fld)`. */
 	const char *packed_names[1024];
+	const char *iter_oks[1024];
 	for (size_t i = 0; i < m->fields.count; i++) {
 		const struct gremlind_field *fld = &m->fields.items[i];
 		fnames[i] = field_cname(&members, fld);
@@ -419,6 +422,19 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		if (getter_fns[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 		entry_types[i] = NULL;
 		packed_names[i] = NULL;
+		iter_oks[i] = NULL;
+		if (field_is_repeated_bytes(fld) || field_is_repeated_msg(fld) ||
+		    field_is_map(fld) || field_is_repeated_scalar(fld)) {
+			size_t rl = strlen(reader_ty), fl = strlen(fnames[i]);
+			char *buf = gremlind_arena_alloc(scope->arena, rl + fl + 9);
+			if (buf == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+			memcpy(buf, reader_ty, rl);
+			buf[rl] = '_';
+			memcpy(buf + rl + 1, fnames[i], fl);
+			memcpy(buf + rl + 1 + fl, "_iter_ok", 8);
+			iter_oks[i] = gremlinc_name_scope_mangle(scope, buf, rl + fl + 9);
+			if (iter_oks[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		}
 		if (field_is_repeated_scalar(fld)) {
 			/* Reserve `<fname>_packed` in the member scope; the
 			 * mangler takes care of collisions with proto fields
@@ -633,10 +649,8 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	}
 	W("} "); W(reader_ty); W(";\n\n");
 
-	/* ---- reader invariant ----
-	 * What reader_init establishes over src[0 .. n): every kept span lies
-	 * in it, and a repeated field's count and first offset stay below n.
-	 * The loop holds it with n = offset, the result with n = len. */
+	/* Every kept span lies in src[0 .. n); the init loop holds it with
+	 * n = offset, the result with n = len. */
 	W("/*@ predicate "); W(reader_ok); W("{L}("); W(reader_ty);
 	W(" *r, integer n) =\n      r->src_len >= n");
 	for (size_t i = 0; i < m->fields.count; i++) {
@@ -695,9 +709,8 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	}
 	/* Miss: unknown field_num, or field_num we know but wrong wire_type.
 	 * Extract wire_type + field_num inline to preserve the same reject
-	 * semantics tag_decode would have given us. A varint32 tag cannot
-	 * carry a field number above GREMLIN_MAX_FIELD_NUM, so only 0 is
-	 * left to reject. */
+	 * semantics tag_decode would have given us. A varint32 tag is never
+	 * above GREMLIN_MAX_FIELD_NUM, so only 0 is left to reject. */
 	W("\t\tunsigned _wt = (unsigned)(t.value % 8u);\n"
 	  "\t\tif (_wt == 6u || _wt == 7u) return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n"
 	  "\t\tif (t.value / 8u == 0u) return GREMLIN_ERROR_INVALID_FIELD_NUM;\n"
@@ -718,26 +731,26 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		const struct gremlind_field *fld = &m->fields.items[i];
 		if (field_is_repeated_bytes(fld)) {
 			err = gremlinc_repeated_bytes_emit_getter(w, fld,
-				reader_ty, reader_ok, fnames[i]);
+				reader_ty, reader_ok, iter_oks[i], fnames[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (field_is_repeated_msg(fld)) {
 			err = gremlinc_repeated_msg_emit_getter(w, fld,
-				reader_ty, reader_ok, fnames[i]);
+				reader_ty, reader_ok, iter_oks[i], fnames[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (field_is_map(fld)) {
 			err = gremlinc_map_emit_getter(w, scope->arena, fld,
-				reader_ty, reader_ok, fnames[i],
+				reader_ty, reader_ok, iter_oks[i], fnames[i],
 				&map_keys[i], &map_vals[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
 		if (field_is_repeated_scalar(fld)) {
 			err = gremlinc_repeated_scalar_emit_getter(w, fld,
-				reader_ty, reader_ok, fnames[i], packed_names[i]);
+				reader_ty, reader_ok, iter_oks[i], fnames[i], packed_names[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
@@ -748,8 +761,14 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 			W(reader_ok); W("(r, r->src_len) &&\n"
 			  "               (r->src_len == 0 ||\n"
 			  "                \\valid_read(r->src + (0 .. r->src_len - 1))) &&\n"
-			  "               \\separated(out, r, r->src + (0 .. r->src_len - 1)));\n"
-			  "    assigns *out;\n");
+			  "               \\separated(out, r) &&\n"
+			  "               \\separated(out, r->src + (0 .. r->src_len - 1)));\n"
+			  "    assigns *out;\n"
+			  "    ensures r != \\null && r->_has."); W(fnames[i]);
+			W(" ==>\n              out->src == r->"); W(fnames[i]);
+			W(".data && out->src_len == r->"); W(fnames[i]); W(".len;\n"
+			  "    ensures r == \\null || !r->_has."); W(fnames[i]);
+			W(" ==> out->src_len == 0;\n");
 			if ((err = gremlinc_emit_child_reader_ok(w, fld->type.u.message, "out")) != GREMLINP_OK)
 				return err;
 			if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
@@ -777,16 +796,30 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		  "    ensures r != \\null && r->_has."); W(fnames[i]);
 		W(" ==> \\result == r->"); W(fnames[i]); W(";\n");
 		/* Without it a caller cannot show that b.len > 0 makes b.data
-		 * readable. A [default] literal stays unspecified: WP does not
-		 * prove a string literal readable. */
+		 * readable. */
+		struct gremlinc_bytes_convert_result dv = { 0 };
 		if (field_is_bytes(fld) && !fld->has_default) {
 			W("    ensures !(r != \\null && r->_has."); W(fnames[i]);
 			W(") ==> \\result.data == \\null && \\result.len == 0;\n");
+		} else if (field_is_bytes(fld)) {
+			dv = gremlinc_const_to_bytes(&fld->default_value, scope->arena);
+			if (dv.error != GREMLINP_OK) return dv.error;
+			W("    ensures !(r != \\null && r->_has."); W(fnames[i]);
+			W(") ==>\n              \\result.len == 0 ||"
+			  " \\valid_read(\\result.data + (0 .. \\result.len - 1));\n");
 		}
 		W("*/\n");
 		W("static inline "); W(rt); W("\n");
 		W(getter_fns[i]);
 		W("(const "); W(reader_ty); W(" *r)\n{\n");
+		/* An array, not a string literal: WP cannot prove a literal readable. */
+		if (dv.escaped != NULL) {
+			W("\tstatic const uint8_t _dv[] = \""); W(dv.escaped); W("\";\n\n");
+			W("\tif (r == NULL || !r->_has."); W(fnames[i]);
+			W(") return (struct gremlin_bytes){ .data = _dv, .len = sizeof(_dv) - 1 };\n");
+			W("\treturn r->"); W(fnames[i]); W(";\n}\n\n");
+			continue;
+		}
 		/* Combined NULL + presence check: treat "caller passed null"
 		 * and "wire had no such field" the same way — return the
 		 * field's declared default. Only return the cached wire value

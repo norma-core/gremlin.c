@@ -1,23 +1,37 @@
-# Proves the read side of a generated header: every reader_init, getter and
-# iterator it defines, plus the runtime decoders they call. The function list
-# is read from the header itself, so a new field family needs no edit here.
-#
-#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... -P verify_reader.cmake
-#
-# CALLERS, optional, is a C file of caller_* functions over the header,
-# proved alongside it.
+# Proves every reader function of a generated header and the headers it includes.
+#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DCALLERS=<caller_* .c>] -P verify_reader.cmake
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
 
-file(STRINGS "${HEADER}" _lines REGEX "^[A-Za-z_][A-Za-z0-9_]*\\(")
+get_filename_component(_dir "${HEADER}" DIRECTORY)
+set(_headers "${HEADER}")
 set(_fcts)
-foreach(_line IN LISTS _lines)
-    string(REGEX MATCH "^[A-Za-z_][A-Za-z0-9_]*" _name "${_line}")
-    if(_name MATCHES "_(reader_init|count|begin|next)$" OR _name MATCHES "_reader_get_")
-        list(APPEND _fcts ${_name})
-    endif()
-endforeach()
+set(_i 0)
+list(LENGTH _headers _n)
+while(_i LESS _n)
+    list(GET _headers ${_i} _h)
+    file(STRINGS "${_h}" _incs REGEX "^#include \"[^\"]+\\.pb\\.h\"")
+    foreach(_inc IN LISTS _incs)
+        string(REGEX REPLACE "^#include \"([^\"]+)\".*" "${_dir}/\\1" _inc "${_inc}")
+        if(NOT _inc IN_LIST _headers)
+            list(APPEND _headers "${_inc}")
+        endif()
+    endforeach()
+    # Readers take `r` or `it` first, whatever the mangler named them;
+    # writers take `m`. Anything else would silently go unproved.
+    file(STRINGS "${_h}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*\\(")
+    foreach(_line IN LISTS _defs)
+        string(REGEX MATCH "^[A-Za-z_][A-Za-z0-9_]*" _name "${_line}")
+        if(_line MATCHES "^[A-Za-z_][A-Za-z0-9_]*\\((const )?[A-Za-z_][A-Za-z0-9_]* \\*(r|it)[,)]")
+            list(APPEND _fcts ${_name})
+        elseif(NOT _line MATCHES "\\*m[,)]" AND NOT _name STREQUAL "__attribute__")
+            message(FATAL_ERROR "neither a reader nor a writer: ${_line}")
+        endif()
+    endforeach()
+    math(EXPR _i "${_i} + 1")
+    list(LENGTH _headers _n)
+endwhile()
 if(NOT _fcts)
     message(FATAL_ERROR "no reader functions found in ${HEADER}")
 endif()
@@ -35,12 +49,18 @@ list(APPEND _fcts
     gremlin_f64_from_bits)
 string(REPLACE ";" "," _fcts_arg "${_fcts}")
 
-get_filename_component(_dir "${HEADER}" DIRECTORY)
 get_filename_component(_name "${HEADER}" NAME)
 set(_drive "${_dir}/verify_reader_drive.c")
 file(WRITE "${_drive}" "#include \"${_name}\"\n")
+set(_callers_dir)
 if(CALLERS)
-    file(APPEND "${_drive}" "#include \"${CALLERS}\"\n")
+    get_filename_component(_callers_dir "${CALLERS}" DIRECTORY)
+    get_filename_component(_callers_name "${CALLERS}" NAME)
+    file(APPEND "${_drive}" "#include \"${_callers_name}\"\n")
+endif()
+set(_cpp "-I${_dir} -I${RUNTIME_INCLUDE}")
+if(_callers_dir)
+    string(APPEND _cpp " -I${_callers_dir}")
 endif()
 
 include(ProcessorCount)
@@ -64,7 +84,7 @@ execute_process(
         -kernel-warn-key annot:missing-spec=inactive
         -wp-warn-key pedantic-assigns=inactive
         -wp-no-warn-memory-model
-        -cpp-extra-args=-I${_dir}\ -I${RUNTIME_INCLUDE}
+        -cpp-extra-args=${_cpp}
         -wp-report-json ${REPORT}
         -wp-fct ${_fcts_arg}
         ${_drive}

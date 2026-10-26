@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package wp;
 
+import "wp_defaults.proto";
+
 enum Color {
     COLOR_NONE = 0;
     COLOR_RED = 1;
@@ -41,8 +43,9 @@ message All {
     map<string, int32> m_scalar = 26;
     map<int64, Inner> m_msg = 27;
 
-    // A C identifier but an ACSL type name; the generator must rename it.
+    // C identifiers but ACSL keywords; the generator must rename them.
     bool boolean = 28;
+    bytes alignof = 29;
 }
 
 // Mutually recursive: each one's contracts name the other's reader, which
@@ -62,4 +65,22 @@ message Pong {
 // contracts that name it must follow.
 message Inner_reader_ok {
     int32 x = 1;
+}
+
+// A map value wide enough that its reader predicate is costly to carry
+// across the iterator's scan loop.
+message Wide {
+    bytes raw = 1;
+    string s = 2;
+    oneof o {
+        bytes ob = 3;
+        string os = 4;
+    }
+    Color c = 5;
+    map<int32, Wide> self = 6;
+    repeated Inner inners = 7;
+}
+
+message HasWide {
+    map<string, Wide> mw = 1;
 }

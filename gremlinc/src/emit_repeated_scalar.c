@@ -414,6 +414,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 				     const struct gremlind_field *f,
 				     const char *reader_ty,
 				     const char *reader_ok,
+				     const char *iter_ok,
 				     const char *fname,
 				     const char *packed_bool_fname)
 {
@@ -433,7 +434,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\tsize_t\t\t count_remaining;\n");
 	W("\tbool\t\t is_packed;\n");
 	W("} "); W(reader_ty); W("_"); W(fname); W("_iter;\n\n");
-	if ((err = gremlinc_emit_iter_ok(w, reader_ty, fname, true)) != GREMLINP_OK) return err;
+	if ((err = gremlinc_emit_iter_ok(w, iter_ok, reader_ty, fname, true)) != GREMLINP_OK) return err;
 
 	/* count */
 	if ((err = gremlinc_emit_iter_count_spec(w, fname)) != GREMLINP_OK) return err;
@@ -444,7 +445,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\treturn r->"); W(fname); W("_count;\n}\n\n");
 
 	/* begin */
-	if ((err = gremlinc_emit_iter_begin_spec(w, reader_ty, reader_ok, fname)) != GREMLINP_OK) return err;
+	if ((err = gremlinc_emit_iter_begin_spec(w, reader_ok, iter_ok, fname)) != GREMLINP_OK) return err;
 	W("static inline "); W(reader_ty); W("_"); W(fname); W("_iter\n");
 	W(reader_ty); W("_"); W(fname); W("_begin(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -458,7 +459,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\treturn it;\n}\n\n");
 
 	/* next */
-	if ((err = gremlinc_emit_iter_next_spec(w, reader_ty, fname, NULL, NULL)) != GREMLINP_OK) return err;
+	if ((err = gremlinc_emit_iter_next_spec(w, iter_ok, NULL, NULL)) != GREMLINP_OK) return err;
 	W("static inline enum gremlin_error\n");
 	W(reader_ty); W("_"); W(fname); W("_next(");
 	W(reader_ty); W("_"); W(fname); W("_iter *it, ");

@@ -172,11 +172,7 @@ struct gremlind_message {
 	 * pass has run.
 	 */
 	const char				*c_name;
-	/*
-	 * Name of the reader's ACSL predicate — set by
-	 * gremlinc_assign_reader_names once every type name is claimed, so a
-	 * parent's contract names it even when the mangler renamed it.
-	 */
+	/* The reader's ACSL predicate as mangled, NULL until the message is emitted. */
 	const char				*c_reader_ok;
 };
 
