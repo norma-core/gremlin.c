@@ -40,6 +40,7 @@ struct ep_field {
 	const char		*ctype;		/* element type of a value array */
 	const char		*tag;		/* avoid-predicate suffix for it */
 	enum scalar_kind	 sk;
+	bool			 is_enum;	/* EK_REP_VARINT of an enum */
 	unsigned		 width;		/* EK_REP_FIXED element width */
 	unsigned		 tagb;		/* bytes of the (packed) tag */
 	unsigned		 utagb;		/* bytes of the unpacked tag */
@@ -203,7 +204,10 @@ wide(const struct ep_field *f)
 static const char *
 value_size(struct gremlind_arena *a, enum scalar_kind k, bool is_enum, const char *ref)
 {
-	if (is_enum) return dup(a, "varint_size((uint64_t)(int64_t)%s)", ref);
+	/* Through int32 as the C does, so -1 in an enum the compiler made unsigned
+	 * is ten bytes. enum_wire is integer arithmetic: a cast drags in the modular axioms. */
+	if (is_enum)
+		return dup(a, "varint_size(enum_wire(%s))", ref);
 	switch (k) {
 	case SCALAR_INT32:	return dup(a, "varint_size((uint64_t)(int64_t)%s)", ref);
 	case SCALAR_INT64:	return dup(a, "varint_size((uint64_t)%s)", ref);
@@ -267,6 +271,7 @@ classify(const struct gremlinc_encode_plan *p, size_t self,
 			out->tagb = tag_bytes(f, WT_LEN_PREFIX_NUM);
 			out->utagb = tag_bytes(f, WT_VARINT_NUM);
 			out->sk = SCALAR_INT32;
+			out->is_enum = true;
 			return true;
 		}
 		out->kind = EK_ENUM;
@@ -725,6 +730,8 @@ static const char *
 elem_size(struct gremlind_arena *a, const struct ep_field *f, const char *ref)
 {
 	/* Integer arithmetic, not a cast: the sum frame lemmas do not go through casts. */
+	if (f->is_enum)
+		return value_size(a, f->sk, true, ref);
 	if (f->sk == SCALAR_INT32 || f->sk == SCALAR_INT64)
 		return dup(a, "varint_size(%s < 0 ? %s + 18446744073709551616 : %s)", ref, ref, ref);
 	return value_size(a, f->sk, false, ref);

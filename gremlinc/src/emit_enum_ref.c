@@ -43,7 +43,7 @@ gremlinc_enum_ref_emit_size_field(struct gremlinc_writer *w,
 	W("\tif (m->"); W(fname); W(" != "); W(default_lit); W(") {\n");
 	W("\t\ts += "); WI((int32_t)tag_bytes);
 	/* int32 sign-extension path: treat enum as int32 on the wire. */
-	W("\n\t\t   + gremlin_varint_size((uint64_t)(int64_t)m->");
+	W("\n\t\t   + gremlin_varint_size((uint64_t)(int64_t)(int32_t)m->");
 	W(fname); W(");\n");
 	W("\t}\n");
 	return GREMLINP_OK;
@@ -61,7 +61,7 @@ gremlinc_enum_ref_emit_encode_field(struct gremlinc_writer *w,
 
 	W("\tif (m->"); W(fname); W(" != "); W(default_lit); W(") {\n");
 	W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)packed); W("u);\n");
-	W("\t\t_off = gremlin_varint_encode_at(_buf, _off, (uint64_t)(int64_t)m->"); W(fname); W(");\n");
+	W("\t\t_off = gremlin_varint_encode_at(_buf, _off, (uint64_t)(int64_t)(int32_t)m->"); W(fname); W(");\n");
 	W("\t}\n");
 	return GREMLINP_OK;
 }

@@ -744,6 +744,39 @@ test_map_parsing(void)
 	return 0;
 }
 
+/* An enum without a negative constant still writes a negative value as an
+ * int32, in ten bytes, whatever C type the compiler gave the enum. */
+static const uint8_t NEGATIVE_ENUM_EXPECTED[] = {
+	176, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1,
+	160, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1,
+	232, 3, 0, 240, 3, 0, 248, 3, 0, 128, 4, 0, 136, 4, 0, 144, 4, 0,
+	157, 4, 0, 0, 0, 0,
+	161, 4, 0, 0, 0, 0, 0, 0, 0, 0,
+	173, 4, 0, 0, 0, 0,
+	177, 4, 0, 0, 0, 0, 0, 0, 0, 0,
+	189, 4, 0, 0, 0, 0,
+	193, 4, 0, 0, 0, 0, 0, 0, 0, 0,
+	200, 4, 0, 210, 4, 0, 218, 4, 0,
+	136, 5, 0, 144, 5, 0, 152, 5, 0, 162, 5, 0, 170, 5, 0
+};
+
+static int
+test_negative_enum(void)
+{
+	protobuf_unittest_ForeignEnum rep[] = { (protobuf_unittest_ForeignEnum)-1 };
+	protobuf_unittest_TestAllTypes msg = {
+		.optional_foreign_enum = (protobuf_unittest_ForeignEnum)-1,
+		.repeated_foreign_enum = rep, .repeated_foreign_enum_count = 1,
+	};
+
+	uint8_t *buf;
+	size_t buf_len;
+	TEST_ENCODE(protobuf_unittest_TestAllTypes, &msg, buf, buf_len);
+	TEST_ASSERT_EQ_BYTES(NEGATIVE_ENUM_EXPECTED, sizeof NEGATIVE_ENUM_EXPECTED, buf, buf_len);
+	free(buf);
+	return 0;
+}
+
 /* `test "golden message"` — parse the reference golden_message binary
  * produced by Google's protobuf; validates reader correctness across
  * every major field kind. Main.zig:609. */
@@ -1108,6 +1141,7 @@ static const struct test_case TESTS[] = {
 	{ "map kv: bad value", test_map_kv_bad_value },
 	{ "absent defaults", test_absent_defaults },
 	{ "negative values", test_negative_values },
+	{ "negative enum",   test_negative_enum   },
 	{ "complex write",   test_complex_write   },
 	{ "complex read",    test_complex_read    },
 	{ "nil list",        test_nil_list        },
