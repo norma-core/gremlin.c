@@ -108,12 +108,14 @@ static TEST(iter_predicate_does_not_take_a_getter_name)
 	gremlind_arena_free_malloc(&arena);
 }
 
-/* The predicate gives way to an enum value of an imported file even when the
- * importer is emitted first. */
+/* Imported enum values keep the names they had before contracts, whichever
+ * file is emitted first: plain, and pushed to _1 by a type of the same name. */
 static TEST(predicate_does_not_take_an_imported_enum_value_name)
 {
-	char a[] = "syntax = \"proto3\";\nenum Foo { bar_reader_ok = 0; }\n";
-	char b[] = "syntax = \"proto3\";\nimport \"a.proto\";\nmessage Foo_bar { int32 x = 1; }\n";
+	char a[] = "syntax = \"proto3\";\nenum Foo { bar_reader_ok = 0; }\n"
+		   "enum Baz { qux_reader_ok = 0; }\nmessage Baz_qux_reader_ok { int32 n = 1; }\n";
+	char b[] = "syntax = \"proto3\";\nimport \"a.proto\";\n"
+		   "message Foo_bar { int32 x = 1; }\nmessage Baz_qux { int32 y = 1; }\n";
 	struct gremlind_arena arena;
 	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
 	struct gremlind_source gs[2] = { { "a.proto", 7, { 0 } }, { "b.proto", 7, { 0 } } };
@@ -128,20 +130,24 @@ static TEST(predicate_does_not_take_an_imported_enum_value_name)
 	ASSERT_EQ(GREMLINP_OK, gremlind_compute_visibility(&ctx));
 	ASSERT_EQ(GREMLINP_OK, gremlind_resolve_type_refs(&ctx));
 
-	struct gremlinc_name_scope s, reserved;
+	struct gremlinc_name_scope s;
 	gremlinc_name_scope_init(&s, &arena);
-	gremlinc_name_scope_init(&reserved, &arena);
-	for (size_t i = 0; i < 2; i++) {
+	for (size_t i = 0; i < 2; i++)
 		ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, ctx.files[i]));
+	struct gremlinc_name_scope reserved = s;
+	for (size_t i = 0; i < 2; i++)
 		ASSERT_EQ(GREMLINP_OK, gremlinc_reserve_public_names(&reserved, ctx.files[i]));
-	}
 	struct gremlinc_writer w;
-	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 4096));
-	ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, &reserved, &ctx.files[1]->messages.items[0]));
-	ASSERT_EQ(GREMLINP_OK, gremlinc_emit_enum(&w, &s, &ctx.files[0]->enums.items[0]));
+	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 8192));
+	for (size_t i = 0; i < 2; i++)
+		ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, &reserved, &ctx.files[1]->messages.items[i]));
+	for (size_t i = 0; i < 2; i++)
+		ASSERT_EQ(GREMLINP_OK, gremlinc_emit_enum(&w, &s, &ctx.files[0]->enums.items[i]));
 	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
 	ASSERT_NOT_NULL(strstr(w.buf, "\tFoo_bar_reader_ok = 0,"));
+	ASSERT_NOT_NULL(strstr(w.buf, "\tBaz_qux_reader_ok_1 = 0,"));
 	ASSERT_STR_EQ("Foo_bar_reader_ok_1", ctx.files[1]->messages.items[0].c_reader_ok);
+	ASSERT_STR_EQ("Baz_qux_reader_ok_2", ctx.files[1]->messages.items[1].c_reader_ok);
 	gremlinc_writer_dispose(&w);
 	gremlind_arena_free_malloc(&arena);
 }

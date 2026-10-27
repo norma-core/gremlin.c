@@ -65,8 +65,10 @@ enum gremlinp_parsing_error	gremlinc_emit_message(struct gremlinc_writer *w,
 						      const struct gremlinc_name_scope *reserved,
 						      struct gremlind_message *m);
 
-/* Add the enum constant and getter names of `file` to `reserved`, the names
- * a predicate must not take whichever file is emitted first. */
+/* Add the enum constant and getter names of `file` to `reserved`, as the
+ * mangler will give them, so a predicate does not take one whichever file is
+ * emitted first. Start `reserved` as a copy of the scope that
+ * gremlinc_assign_c_names filled for every file. */
 enum gremlinp_parsing_error	gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 							      const struct gremlind_file *file);
 

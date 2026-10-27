@@ -343,9 +343,11 @@ gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 		    gremlinc_name_scope_mangle(&members, "src_len", 7) == NULL ||
 		    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL)
 			return GREMLINP_ERROR_OUT_OF_MEMORY;
+		const char *reader = claim_join2(reserved, m->c_name, "_reader");
+		if (reader == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 		for (size_t j = 0; j < m->fields.count; j++) {
 			const char *fn = field_cname(&members, &m->fields.items[j]);
-			if (fn == NULL || claim_join3(reserved, m->c_name, "_reader_get_", fn) == NULL)
+			if (fn == NULL || claim_join3(reserved, reader, "_get_", fn) == NULL)
 				return GREMLINP_ERROR_OUT_OF_MEMORY;
 		}
 	}

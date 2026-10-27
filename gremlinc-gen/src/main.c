@@ -75,8 +75,8 @@ run_pipeline(const struct args *args,
 
 	/* Learn every predicate name first, then roll the scope back so the
 	 * real pass claims the same names a single pass would. */
-	struct gremlinc_name_scope reserved;
-	gremlinc_name_scope_init(&reserved, arena);
+	/* A copy: the scope is a list that only grows at the head. */
+	struct gremlinc_name_scope reserved = global_scope;
 	for (size_t i = 0; i < ctx.n_sources; i++) {
 		if ((err = gremlinc_reserve_public_names(&reserved, ctx.files[i]))) goto fail;
 	}
