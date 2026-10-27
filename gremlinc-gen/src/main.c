@@ -75,6 +75,11 @@ run_pipeline(const struct args *args,
 
 	/* Learn every predicate name first, then roll the scope back so the
 	 * real pass claims the same names a single pass would. */
+	struct gremlinc_name_scope reserved;
+	gremlinc_name_scope_init(&reserved, arena);
+	for (size_t i = 0; i < ctx.n_sources; i++) {
+		if ((err = gremlinc_reserve_public_names(&reserved, ctx.files[i]))) goto fail;
+	}
 	bool learn = false;
 	if ((err = needs_first_pass(arena, ctx.files, sources->count, &learn))) goto fail;
 	struct gremlinc_name_scope claimed = global_scope;
@@ -85,7 +90,7 @@ run_pipeline(const struct args *args,
 			free(gs);
 			return 1;
 		}
-		err = emit_file(arena, &global_scope, ctx.files[i],
+		err = emit_file(arena, &global_scope, &reserved, ctx.files[i],
 				sources->items[i].path, &w);
 		gremlinc_writer_dispose(&w);
 		if (err != GREMLINP_OK) goto fail;
@@ -102,7 +107,7 @@ run_pipeline(const struct args *args,
 			return 1;
 		}
 
-		err = emit_file(arena, &global_scope, ctx.files[i],
+		err = emit_file(arena, &global_scope, &reserved, ctx.files[i],
 				sources->items[i].path, &w);
 		if (err != GREMLINP_OK) {
 			gremlinc_writer_dispose(&w);

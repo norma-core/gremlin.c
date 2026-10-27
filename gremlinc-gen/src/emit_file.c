@@ -75,6 +75,7 @@ emit_file_names_ahead(struct gremlind_arena *arena, const struct gremlind_file *
  * name a contract uses was learned by the caller's first pass. */
 static enum gremlinp_parsing_error
 emit_messages_hoisted(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
+		      const struct gremlinc_name_scope *reserved,
 		      const struct gremlind_message_order *o, const bool *hoist)
 {
 	enum gremlinp_parsing_error err = GREMLINP_ERROR_OUT_OF_MEMORY;
@@ -85,7 +86,7 @@ emit_messages_hoisted(struct gremlinc_writer *w, struct gremlinc_name_scope *sco
 	if (at == NULL || !gremlinc_writer_init_owned(&tmp, 64 * 1024)) goto out;
 	for (size_t i = 0; i < o->count; i++) {
 		at[4 * i] = tmp.offset;
-		err = gremlinc_emit_message_marked(&tmp, scope, o->items[i],
+		err = gremlinc_emit_message_marked(&tmp, scope, reserved, o->items[i],
 						   &at[4 * i + 1], &at[4 * i + 2]);
 		if (err != GREMLINP_OK) goto out;
 		at[4 * i + 3] = tmp.offset;
@@ -135,6 +136,7 @@ derive_guard(const char *src_path)
 enum gremlinp_parsing_error
 emit_file(struct gremlind_arena *arena,
 	  struct gremlinc_name_scope *global_scope,
+	  const struct gremlinc_name_scope *reserved,
 	  const struct gremlind_file *file,
 	  const char *src_path,
 	  struct gremlinc_writer *w)
@@ -217,11 +219,11 @@ emit_file(struct gremlind_arena *arena,
 	err = mark_named_before(&order, hoist, &any);
 	if (err != GREMLINP_OK) goto out;
 	if (any) {
-		err = emit_messages_hoisted(w, global_scope, &order, hoist);
+		err = emit_messages_hoisted(w, global_scope, reserved, &order, hoist);
 		if (err != GREMLINP_OK) goto out;
 	} else {
 		for (size_t i = 0; i < order.count; i++) {
-			err = gremlinc_emit_message(w, global_scope, order.items[i]);
+			err = gremlinc_emit_message(w, global_scope, reserved, order.items[i]);
 			if (err != GREMLINP_OK) goto out;
 		}
 	}

@@ -18,13 +18,15 @@
  * `global_scope` is the shared C-identifier scope (pre-populated by
  * `gremlinc_assign_c_names` for every descriptor across every file);
  * it's threaded through the emit-message helpers for per-member
- * mangling.
+ * mangling. `reserved` holds the public names of every file, which a
+ * predicate leaves alone.
  *
  * `src_path` is the logical path of this source file — used only to
  * derive the header guard (`FOO_PROTO_PB_H_` etc.).
  */
 enum gremlinp_parsing_error	emit_file(struct gremlind_arena *arena,
 					  struct gremlinc_name_scope *global_scope,
+					  const struct gremlinc_name_scope *reserved,
 					  const struct gremlind_file *file,
 					  const char *src_path,
 					  struct gremlinc_writer *w);
