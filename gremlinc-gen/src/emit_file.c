@@ -76,7 +76,8 @@ emit_file_names_ahead(struct gremlind_arena *arena, const struct gremlind_file *
 static enum gremlinp_parsing_error
 emit_messages_hoisted(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
 		      const struct gremlinc_name_scope *reserved,
-		      const struct gremlind_message_order *o, const bool *hoist)
+		      const struct gremlind_message_order *o, const bool *hoist,
+		      struct gremlinc_encode_plan *plan)
 {
 	enum gremlinp_parsing_error err = GREMLINP_ERROR_OUT_OF_MEMORY;
 	struct gremlinc_writer tmp = { 0 };
@@ -86,7 +87,7 @@ emit_messages_hoisted(struct gremlinc_writer *w, struct gremlinc_name_scope *sco
 	if (at == NULL || !gremlinc_writer_init_owned(&tmp, 64 * 1024)) goto out;
 	for (size_t i = 0; i < o->count; i++) {
 		at[4 * i] = tmp.offset;
-		err = gremlinc_emit_message_marked(&tmp, scope, reserved, o->items[i],
+		err = gremlinc_emit_message_marked(&tmp, scope, reserved, o->items[i], plan,
 						   &at[4 * i + 1], &at[4 * i + 2]);
 		if (err != GREMLINP_OK) goto out;
 		at[4 * i + 3] = tmp.offset;
@@ -137,6 +138,7 @@ enum gremlinp_parsing_error
 emit_file(struct gremlind_arena *arena,
 	  struct gremlinc_name_scope *global_scope,
 	  const struct gremlinc_name_scope *reserved,
+	  struct gremlinc_name_scope *logic_scope,
 	  const struct gremlind_file *file,
 	  const char *src_path,
 	  struct gremlinc_writer *w)
@@ -210,6 +212,11 @@ emit_file(struct gremlind_arena *arena,
 		err = gremlinc_emit_message_forward(w, order.predeclare[i]);
 		if (err != GREMLINP_OK) goto out;
 	}
+	struct gremlinc_encode_plan *plan;
+	err = gremlinc_encode_plan_build(arena, logic_scope, reserved, order.items,
+					 order.count, &plan);
+	if (err != GREMLINP_OK) goto out;
+
 	bool any = false;
 	hoist = order.count > 0 ? calloc(order.count, sizeof(*hoist)) : NULL;
 	if (order.count > 0 && hoist == NULL) {
@@ -219,11 +226,11 @@ emit_file(struct gremlind_arena *arena,
 	err = mark_named_before(&order, hoist, &any);
 	if (err != GREMLINP_OK) goto out;
 	if (any) {
-		err = emit_messages_hoisted(w, global_scope, reserved, &order, hoist);
+		err = emit_messages_hoisted(w, global_scope, reserved, &order, hoist, plan);
 		if (err != GREMLINP_OK) goto out;
 	} else {
 		for (size_t i = 0; i < order.count; i++) {
-			err = gremlinc_emit_message(w, global_scope, reserved, order.items[i]);
+			err = gremlinc_emit_message(w, global_scope, reserved, order.items[i], plan);
 			if (err != GREMLINP_OK) goto out;
 		}
 	}

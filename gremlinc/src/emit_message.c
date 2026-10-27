@@ -5,6 +5,7 @@
 #include "gremlinc/emit.h"
 #include "gremlinc/const_convert.h"
 #include "gremlinc/naming.h"
+#include "gremlind/resolve.h"
 
 #include "emit_common.h"
 
@@ -291,11 +292,9 @@ claim_join3(struct gremlinc_name_scope *s,
 	return gremlinc_name_scope_mangle(s, raw, total);
 }
 
-/* A predicate is a name the contracts add, so it gives way to every public
- * name of the run, even one a later file emits. */
-static const char *
-claim_pred(struct gremlinc_name_scope *s, const struct gremlinc_name_scope *reserved,
-	   const char *a, const char *b)
+const char *
+gremlinc_claim_avoiding(struct gremlinc_name_scope *s, const struct gremlinc_name_scope *reserved,
+			const char *a, const char *b)
 {
 	size_t len = strlen(a) + strlen(b) + 12;
 	char *n = gremlind_arena_alloc(s->arena, len);
@@ -335,20 +334,39 @@ gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 				return GREMLINP_ERROR_OUT_OF_MEMORY;
 		}
 	}
-	for (size_t i = 0; i < file->messages.count; i++) {
-		const struct gremlind_message *m = &file->messages.items[i];
+	/* Every public name in the order emission claims them, so each lands on
+	 * the name it will have. */
+	struct gremlind_message_order order;
+	enum gremlinp_parsing_error err =
+		gremlind_topo_sort_messages(a, (struct gremlind_file *)file, &order);
+	if (err != GREMLINP_OK) return err;
+	for (size_t i = 0; i < order.count; i++) {
+		const struct gremlind_message *m = order.items[i];
 		struct gremlinc_name_scope members;
 		gremlinc_name_scope_init(&members, a);
 		if (gremlinc_name_scope_mangle(&members, "src", 3) == NULL ||
 		    gremlinc_name_scope_mangle(&members, "src_len", 7) == NULL ||
 		    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL)
 			return GREMLINP_ERROR_OUT_OF_MEMORY;
-		const char *reader = claim_join2(reserved, m->c_name, "_reader");
-		if (reader == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		const char *reader;
+		if (claim_join2(reserved, m->c_name, "_size") == NULL ||
+		    claim_join2(reserved, m->c_name, "_encode") == NULL ||
+		    (reader = claim_join2(reserved, m->c_name, "_reader")) == NULL ||
+		    claim_join2(reserved, reader, "_init") == NULL)
+			return GREMLINP_ERROR_OUT_OF_MEMORY;
 		for (size_t j = 0; j < m->fields.count; j++) {
-			const char *fn = field_cname(&members, &m->fields.items[j]);
+			const struct gremlind_field *fld = &m->fields.items[j];
+			const char *fn = field_cname(&members, fld);
 			if (fn == NULL || claim_join3(reserved, reader, "_get_", fn) == NULL)
 				return GREMLINP_ERROR_OUT_OF_MEMORY;
+			if (field_is_repeated_scalar(fld) &&
+			    claim_join2(&members, fn, "_packed") == NULL)
+				return GREMLINP_ERROR_OUT_OF_MEMORY;
+			if (field_is_map(fld)) {
+				const char *pre = claim_pred_prefix(a, m->c_name, fn);
+				if (pre == NULL || claim_join2(reserved, pre, "_entry") == NULL)
+					return GREMLINP_ERROR_OUT_OF_MEMORY;
+			}
 		}
 	}
 	return GREMLINP_OK;
@@ -410,9 +428,10 @@ enum gremlinp_parsing_error
 gremlinc_emit_message(struct gremlinc_writer *w,
 		      struct gremlinc_name_scope *scope,
 		      const struct gremlinc_name_scope *reserved,
-		      struct gremlind_message *m)
+		      struct gremlind_message *m,
+		      struct gremlinc_encode_plan *plan)
 {
-	return gremlinc_emit_message_marked(w, scope, reserved, m, NULL, NULL);
+	return gremlinc_emit_message_marked(w, scope, reserved, m, plan, NULL, NULL);
 }
 
 enum gremlinp_parsing_error
@@ -420,6 +439,7 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 			     struct gremlinc_name_scope *scope,
 			     const struct gremlinc_name_scope *reserved,
 			     struct gremlind_message *m,
+			     struct gremlinc_encode_plan *plan,
 			     size_t *decl_start, size_t *decl_end)
 {
 	if (w == NULL || scope == NULL || m == NULL) {
@@ -442,7 +462,7 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	const char *encode_fn	   = claim_join2(scope, tname, "_encode");
 	const char *reader_ty	   = claim_join2(scope, tname, "_reader");
 	const char *reader_init_fn = claim_join2(scope, reader_ty, "_init");
-	const char *reader_ok	   = claim_pred(scope, reserved, reader_ty, "_ok");
+	const char *reader_ok	   = gremlinc_claim_avoiding(scope, reserved, reader_ty, "_ok");
 	if (!size_fn || !encode_fn || !reader_ty || !reader_init_fn || !reader_ok) {
 		return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
@@ -537,11 +557,15 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		    !field_is_map(fld) && !field_is_repeated_scalar(fld))
 			continue;
 		const char *pre = claim_pred_prefix(scope->arena, reader_ty, fnames[i]);
-		iter_oks[i] = pre ? claim_pred(scope, reserved, pre, "_iter_ok") : NULL;
+		iter_oks[i] = pre ? gremlinc_claim_avoiding(scope, reserved, pre, "_iter_ok") : NULL;
 		if (iter_oks[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
 
 	enum gremlinp_parsing_error err;
+
+	struct gremlinc_espec *sp;
+	err = gremlinc_espec_begin(plan, scope, m, fnames, defaults, &sp);
+	if (err != GREMLINP_OK) return err;
 
 	/* ---- entry typedefs for map fields ---- */
 	for (size_t i = 0; i < m->fields.count; i++) {
@@ -604,9 +628,11 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	 * `gremlinc_emit_message_forward`) lets earlier-emitted sibling
 	 * encoders reference this function even when the struct wasn't
 	 * yet defined at their emission site. */
+	if ((err = gremlinc_espec_cached_size_contract(w, sp))) return err;
 	W("static inline size_t\n");
 	W(tname); W("_cached_size(const "); W(tname); W(" *m)\n{\n");
 	W("\treturn m->_size;\n}\n\n");
+	if ((err = gremlinc_espec_emit_logic(w, scope, sp))) return err;
 
 	/* ---- size function ----
 	 *

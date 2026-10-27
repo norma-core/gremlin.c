@@ -9,6 +9,8 @@
 #include "gremlinc/writer.h"
 #include "gremlinc/naming.h"
 
+struct gremlinc_espec;
+
 /*
  * Internal header shared by emit_message.c (orchestrator) and per-family
  * emit modules. Not installed — gremlinc's public API is
@@ -329,5 +331,29 @@ enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_getter(struct gremlinc
 							const char *iter_ok,
 							const char *fname,
 							const char *packed_bool_fname);
+
+/* ------------------------------------------------------------------------
+ * Write-side ACSL (emit_encode_spec.c).  Every call is a no-op when `sp`
+ * is NULL, i.e. for a message outside the supported subset.
+ * ------------------------------------------------------------------------ */
+
+enum gremlinp_parsing_error	gremlinc_espec_begin(struct gremlinc_encode_plan *plan,
+							struct gremlinc_name_scope *scope,
+							const struct gremlind_message *m,
+							const char *const *fnames,
+							const char *const *defaults,
+							struct gremlinc_espec **out);
+enum gremlinp_parsing_error	gremlinc_espec_emit_logic(struct gremlinc_writer *w,
+							struct gremlinc_name_scope *scope,
+							struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_cached_size_contract(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+
+/* Claim <a><b> in s, suffixed past anything in s or reserved: for a name the
+ * contracts add (a predicate, a ghost), which gives way to every public name
+ * of the run, even one a later file emits. */
+const char			*gremlinc_claim_avoiding(struct gremlinc_name_scope *s,
+							 const struct gremlinc_name_scope *reserved,
+							 const char *a, const char *b);
 
 #endif /* !_GREMLINC_EMIT_COMMON_H_ */

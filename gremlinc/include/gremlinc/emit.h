@@ -6,6 +6,8 @@
 #include "writer.h"
 #include "naming.h"
 
+struct gremlinc_encode_plan;
+
 /*
  * Emit an enum as a C typedef to `w`. Expected layout:
  *
@@ -63,7 +65,25 @@ enum gremlinp_parsing_error	gremlinc_emit_enum(struct gremlinc_writer *w,
 enum gremlinp_parsing_error	gremlinc_emit_message(struct gremlinc_writer *w,
 						      struct gremlinc_name_scope *scope,
 						      const struct gremlinc_name_scope *reserved,
-						      struct gremlind_message *m);
+						      struct gremlind_message *m,
+						      struct gremlinc_encode_plan *plan);
+
+/*
+ * Decide which messages of a file get write-side ACSL and which
+ * separation predicates their contracts need.  `order` is the file's
+ * topological message order.  Pass the plan to every
+ * gremlinc_emit_message call for that file, or NULL for no write-side
+ * annotations.  `logic`, never NULL, holds the logic names; share it across the files
+ * of one run, since a header includes the ones it imports.  `reserved` is
+ * what gremlinc_reserve_public_names fills: a ghost, being a C function,
+ * skips those names too.
+ */
+enum gremlinp_parsing_error	gremlinc_encode_plan_build(struct gremlind_arena *arena,
+							   struct gremlinc_name_scope *logic,
+							   const struct gremlinc_name_scope *reserved,
+							   struct gremlind_message *const *order,
+							   size_t count,
+							   struct gremlinc_encode_plan **out);
 
 /* Add the enum constant and getter names of `file` to `reserved`, as the
  * mangler will give them, so a predicate does not take one whichever file is
@@ -97,6 +117,7 @@ enum gremlinp_parsing_error	gremlinc_emit_message_marked(struct gremlinc_writer 
 							     struct gremlinc_name_scope *scope,
 							     const struct gremlinc_name_scope *reserved,
 							     struct gremlind_message *m,
+							     struct gremlinc_encode_plan *plan,
 							     size_t *decl_start,
 							     size_t *decl_end);
 

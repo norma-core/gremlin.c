@@ -20,6 +20,7 @@
  * it's threaded through the emit-message helpers for per-member
  * mangling. `reserved` holds the public names of every file, which a
  * predicate leaves alone.
+ * `logic_scope` holds the write-side logic names of every file.
  *
  * `src_path` is the logical path of this source file — used only to
  * derive the header guard (`FOO_PROTO_PB_H_` etc.).
@@ -27,6 +28,7 @@
 enum gremlinp_parsing_error	emit_file(struct gremlind_arena *arena,
 					  struct gremlinc_name_scope *global_scope,
 					  const struct gremlinc_name_scope *reserved,
+					  struct gremlinc_name_scope *logic_scope,
 					  const struct gremlind_file *file,
 					  const char *src_path,
 					  struct gremlinc_writer *w);
