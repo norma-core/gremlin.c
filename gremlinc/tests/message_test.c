@@ -248,6 +248,7 @@ static TEST(type_named_like_an_annotation_variable_gets_a_suffix)
 	char src[] =
 		"syntax = \"proto3\";\n"
 		"message lo { uint32 f = 1; }\n"
+		"message _bi { uint32 f = 1; }\n"
 		"message Holder { lo a = 1; uint64 z = 2; }\n";
 	struct gremlind_arena arena;
 	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
@@ -261,7 +262,8 @@ static TEST(type_named_like_an_annotation_variable_gets_a_suffix)
 	ASSERT_EQ(GREMLINP_OK, gremlinc_name_scope_reserve_logic(&s));
 	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
 	ASSERT_STR_EQ("lo_1", file->messages.items[0].c_name);
-	struct gremlind_message *order[2] = { &file->messages.items[0], &file->messages.items[1] };
+	ASSERT_STR_EQ("_bi_1", file->messages.items[1].c_name);
+	struct gremlind_message *order[2] = { &file->messages.items[0], &file->messages.items[2] };
 	struct gremlinc_encode_plan *plan;
 	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 2, &plan));
 	struct gremlinc_writer w;
@@ -348,6 +350,39 @@ static TEST(repeated_element_with_children_gets_no_write_contracts)
 	gremlind_arena_free_malloc(&arena);
 }
 
+/* A repeated message next to more data than _size proves in time stays out. */
+static TEST(heavy_repeated_message_gets_no_write_contracts)
+{
+	char src[] =
+		"syntax = \"proto3\";\n"
+		"message P { uint64 x = 1; repeated uint64 v = 2; bytes raw = 3; }\n"
+		"message Light { repeated P items = 1; }\n"
+		"message Heavy { uint64 h = 1; bytes b = 2; repeated P items = 3; }\n";
+	struct gremlind_arena arena;
+	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
+	struct gremlind_source gs;
+	struct gremlind_file *file = build(&arena, &gs, src);
+	ASSERT_NOT_NULL(file);
+
+	struct gremlinc_name_scope s, logic;
+	gremlinc_name_scope_init(&s, &arena);
+	gremlinc_name_scope_init(&logic, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
+	struct gremlind_message *order[3];
+	for (size_t i = 0; i < 3; i++) order[i] = &file->messages.items[i];
+	struct gremlinc_encode_plan *plan;
+	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 3, &plan));
+	struct gremlinc_writer w;
+	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 8192));
+	for (size_t i = 0; i < 3; i++)
+		ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, NULL, order[i], plan));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
+	ASSERT_NOT_NULL(strstr(w.buf, "void Light_tsize_nonneg(Light *m)"));
+	ASSERT_NULL(strstr(w.buf, "Heavy_tsize_nonneg"));
+	gremlinc_writer_dispose(&w);
+	gremlind_arena_free_malloc(&arena);
+}
+
 void message_test(void);
 
 void message_test(void)
@@ -361,4 +396,5 @@ void message_test(void)
 	RUN_TEST(type_named_like_an_annotation_variable_gets_a_suffix);
 	RUN_TEST(reserved_getters_follow_emission_order);
 	RUN_TEST(repeated_element_with_children_gets_no_write_contracts);
+	RUN_TEST(heavy_repeated_message_gets_no_write_contracts);
 }

@@ -196,7 +196,9 @@ const char			*gremlinc_enum_ref_resolve_default(struct gremlind_arena *arena,
  */
 enum gremlinp_parsing_error	gremlinc_msg_ref_emit_size_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_msg_ref_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -214,7 +216,9 @@ const char			*gremlinc_msg_ref_default_literal(void);
  */
 enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_size_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -236,7 +240,9 @@ enum gremlinp_parsing_error	gremlinc_repeated_bytes_emit_getter(struct gremlinc_
  */
 enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_size_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_msg_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -316,7 +322,9 @@ enum gremlinp_parsing_error	gremlinc_map_emit_getter(struct gremlinc_writer *w,
  */
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_encode_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *fname);
@@ -337,6 +345,15 @@ enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_getter(struct gremlinc
  * is NULL, i.e. for a message outside the supported subset.
  * ------------------------------------------------------------------------ */
 
+enum gremlinc_espec_hook_kind {
+	GREMLINC_HOOK_MSG_SIZE_CHILD,
+	GREMLINC_HOOK_REPMSG_BODY,
+	GREMLINC_HOOK_REPBYTES_BODY,
+	GREMLINC_HOOK_REPMSG_SIZE_CHILD,
+	GREMLINC_HOOK_REPMSG_NULL,
+	GREMLINC_HOOK_PACKED_PAYLOAD
+};
+
 enum gremlinp_parsing_error	gremlinc_espec_begin(struct gremlinc_encode_plan *plan,
 							struct gremlinc_name_scope *scope,
 							const struct gremlind_message *m,
@@ -348,6 +365,24 @@ enum gremlinp_parsing_error	gremlinc_espec_emit_logic(struct gremlinc_writer *w,
 							struct gremlinc_espec *sp);
 enum gremlinp_parsing_error	gremlinc_espec_cached_size_contract(struct gremlinc_writer *w,
 							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_size_contract(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_size_start(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_size_field_before(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi);
+enum gremlinp_parsing_error	gremlinc_espec_size_field_after(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi);
+enum gremlinp_parsing_error	gremlinc_espec_size_before_write(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_size_after_write(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp);
+enum gremlinp_parsing_error	gremlinc_espec_hook(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi,
+							enum gremlinc_espec_hook_kind h);
 
 /* Claim <a><b> in s, suffixed past anything in s or reserved: for a name the
  * contracts add (a predicate, a ghost), which gives way to every public name

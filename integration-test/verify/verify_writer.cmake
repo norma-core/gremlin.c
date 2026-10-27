@@ -1,14 +1,15 @@
-# Proves the write side of a generated header: _cached_size, the ghost
-# helpers and the lemmas. Lemmas go in a second run: their induction
-# needs the tip prover.
+# Proves the write side of a generated header: every _size and _cached_size it
+# defines, the ghost helpers their proofs call, and the lemmas. Lemmas go in a
+# second run: their induction needs the tip prover.
 #
-#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] -P verify_writer.cmake
+#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>] -P verify_writer.cmake
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
 
 # Messages with write-side contracts are the ones that got ghost helpers. Their
-# _cached_size is found by the type it takes, whatever suffix it was given.
+# _size and _cached_size, the two that take only the message, are found by the
+# type they take, whatever suffix they were given.
 file(STRINGS "${HEADER}" _ghosts REGEX "^  void [A-Za-z_][A-Za-z0-9_]*\\(")
 set(_fcts)
 set(_types)
@@ -36,7 +37,7 @@ if(PROTO)
         message(FATAL_ERROR "${_nt} of ${_nm} messages in ${PROTO} have write-side contracts")
     endif()
 endif()
-file(STRINGS "${HEADER}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*_cached_size(_[0-9]+)?\\(")
+file(STRINGS "${HEADER}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*\\(")
 foreach(_t IN LISTS _types)
     set(_n 0)
     foreach(_line IN LISTS _defs)
@@ -45,12 +46,22 @@ foreach(_t IN LISTS _types)
             math(EXPR _n "${_n} + 1")
         endif()
     endforeach()
-    if(NOT _n EQUAL 1)
-        message(FATAL_ERROR "${_t}: ${_n} _cached_size functions, expected 1")
+    if(NOT _n EQUAL 2)
+        message(FATAL_ERROR "${_t}: ${_n} of _size and _cached_size found, expected 2")
     endif()
 endforeach()
 if(NOT _fcts)
     message(FATAL_ERROR "no writer functions found in ${HEADER}")
+endif()
+if(CALLERS)
+    file(STRINGS "${CALLERS}" _callers REGEX "^caller_[A-Za-z0-9_]*\\(")
+    foreach(_line IN LISTS _callers)
+        string(REGEX MATCH "^caller_[A-Za-z0-9_]*" _c "${_line}")
+        list(APPEND _fcts ${_c})
+    endforeach()
+    if(NOT _callers)
+        message(FATAL_ERROR "no caller_* functions found in ${CALLERS}")
+    endif()
 endif()
 string(REPLACE ";" "," _fcts_arg "${_fcts}")
 
@@ -58,10 +69,19 @@ get_filename_component(_dir "${HEADER}" DIRECTORY)
 get_filename_component(_name "${HEADER}" NAME)
 set(_drive "${_dir}/verify_writer_drive.c")
 file(WRITE "${_drive}" "#include \"${_name}\"\n")
+set(_inc "-I${_dir} -I${RUNTIME_INCLUDE}")
+if(CALLERS)
+    get_filename_component(_callers_dir "${CALLERS}" DIRECTORY)
+    get_filename_component(_callers_name "${CALLERS}" NAME)
+    file(APPEND "${_drive}" "#include \"${_callers_name}\"\n")
+    string(APPEND _inc " -I${_callers_dir}")
+endif()
 
 include(ProcessorCount)
 ProcessorCount(_nproc)
-if(_nproc EQUAL 0)
+# The slowest _size goals take up to a minute alone and miss the timeout once
+# more than four provers run at once; a proof that depends on load is not one.
+if(_nproc EQUAL 0 OR _nproc GREATER 4)
     set(_nproc 4)
 endif()
 
@@ -76,7 +96,7 @@ set(_common
     -kernel-warn-key annot:missing-spec=inactive
     -wp-warn-key pedantic-assigns=inactive
     -wp-no-warn-memory-model
-    -cpp-extra-args=-I${_dir}\ -I${RUNTIME_INCLUDE})
+    -cpp-extra-args=${_inc})
 
 function(_run report)
     file(REMOVE "${report}")

@@ -233,7 +233,9 @@ emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e,
 enum gremlinp_parsing_error
 gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 					 const struct gremlind_field *f,
-					 const char *fname)
+					 const char *fname,
+					 const struct gremlinc_espec *sp,
+					 size_t fi)
 {
 	enum gremlinp_parsing_error err;
 	struct rs_elem e;
@@ -259,6 +261,7 @@ gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 8;\n");
 	} else {
 		W("\t\tsize_t _payload = 0;\n");
+		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_PAYLOAD))) return err;
 		W("\t\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
 		W("\t\t\t_payload += ");
 		{
