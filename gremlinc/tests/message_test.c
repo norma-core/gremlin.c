@@ -248,6 +248,7 @@ static TEST(type_named_like_an_annotation_variable_gets_a_suffix)
 	char src[] =
 		"syntax = \"proto3\";\n"
 		"message lo { uint32 f = 1; }\n"
+		"message _bi { uint32 f = 1; }\n"
 		"message Holder { lo a = 1; uint64 z = 2; }\n";
 	struct gremlind_arena arena;
 	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
@@ -261,7 +262,8 @@ static TEST(type_named_like_an_annotation_variable_gets_a_suffix)
 	ASSERT_EQ(GREMLINP_OK, gremlinc_name_scope_reserve_logic(&s));
 	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
 	ASSERT_STR_EQ("lo_1", file->messages.items[0].c_name);
-	struct gremlind_message *order[2] = { &file->messages.items[0], &file->messages.items[1] };
+	ASSERT_STR_EQ("_bi_1", file->messages.items[1].c_name);
+	struct gremlind_message *order[2] = { &file->messages.items[0], &file->messages.items[2] };
 	struct gremlinc_encode_plan *plan;
 	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 2, &plan));
 	struct gremlinc_writer w;

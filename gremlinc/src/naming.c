@@ -157,7 +157,9 @@ gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s)
 		"integer", "gremlin_span_in",
 		"b", "e", "ebuf", "elen", "eoff", "hi", "hi2", "i", "it", "j", "k", "len", "lo",
 		"lo2", "m", "n", "offset", "out", "out_key", "out_value", "p", "q", "r", "s",
-		"src", "t", "w"
+		"src", "t", "w",
+		"_bcnt", "_bd", "_bi", "_buf", "_child_size", "_el", "_entry", "_i", "_off",
+		"_payload", "_vspan"
 	};
 
 	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
