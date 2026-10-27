@@ -357,17 +357,20 @@ emit_slot_decode(struct gremlinc_writer *w,
 		  "\t\t\t"); W(outref); W(" = ("); W(s->enum_ref->c_name);
 		W(")(int32_t)(uint32_t)d.value;\n");
 		break;
-	case GREMLINC_MS_MESSAGE: {
-		const char *tname = s->msg_ref->c_name;
+	case GREMLINC_MS_MESSAGE:
+		/* A value repeated in the entry is still checked; next() inits
+		 * the reader from the last one once the entry is read. */
 		W("\t\t\tstruct gremlin_bytes_decode_result d =\n"
 		  "\t\t\t\tgremlin_bytes_decode(ebuf + eoff, elen - eoff);\n"
 		  "\t\t\tif (d.error != GREMLIN_OK) return d.error;\n"
 		  "\t\t\teoff += d.consumed;\n"
-		  "\t\t\tenum gremlin_error _ie = "); W(tname);
-		W("_reader_init("); W(outref); W(", d.bytes.data, d.bytes.len);\n"
-		  "\t\t\tif (_ie != GREMLIN_OK) return _ie;\n");
+		  "\t\t\tif ("); W(outref); W(".len > 0) {\n"
+		  "\t\t\t\tenum gremlin_error _ie = "); W(s->msg_ref->c_name);
+		W("_reader_init(out_value, "); W(outref); W(".data, "); W(outref); W(".len);\n"
+		  "\t\t\t\tif (_ie != GREMLIN_OK) return _ie;\n"
+		  "\t\t\t}\n"
+		  "\t\t\t"); W(outref); W(" = d.bytes;\n");
 		break;
-	}
 	}
 	return GREMLINP_OK;
 }
@@ -504,11 +507,19 @@ gremlinc_map_emit_reader_arm(struct gremlinc_writer *w,
 	return GREMLINP_OK;
 }
 
+/* A bytes key or value lies in the iterator's src. */
+#define MAP_KEY_SPAN \
+	"(out_key->len == 0 || gremlin_span_in(*out_key, (uint8_t *)it->src, it->src_len))"
+#define MAP_VALUE_SPAN \
+	"(out_value->len == 0 || gremlin_span_in(*out_value, (uint8_t *)it->src, it->src_len))"
+
 enum gremlinp_parsing_error
 gremlinc_map_emit_getter(struct gremlinc_writer *w,
 			 struct gremlind_arena *arena,
 			 const struct gremlind_field *f,
 			 const char *reader_ty,
+			 const char *reader_ok,
+			 const char *iter_ok,
 			 const char *fname,
 			 const struct map_slot_info *key,
 			 const struct map_slot_info *val)
@@ -525,14 +536,17 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 	W("\tsize_t\t\t offset;\n");
 	W("\tsize_t\t\t count_remaining;\n");
 	W("} "); W(reader_ty); W("_"); W(fname); W("_iter;\n\n");
+	if ((err = gremlinc_emit_iter_ok(w, iter_ok, reader_ty, fname, false)) != GREMLINP_OK) return err;
 
 	/* count */
+	if ((err = gremlinc_emit_iter_count_spec(w, fname)) != GREMLINP_OK) return err;
 	W("static inline size_t\n");
 	W(reader_ty); W("_"); W(fname); W("_count(const "); W(reader_ty); W(" *r)\n{\n");
 	W("\tif (r == NULL) return 0;\n");
 	W("\treturn r->"); W(fname); W("_count;\n}\n\n");
 
 	/* begin */
+	if ((err = gremlinc_emit_iter_begin_spec(w, reader_ok, iter_ok, fname)) != GREMLINP_OK) return err;
 	W("static inline "); W(reader_ty); W("_"); W(fname); W("_iter\n");
 	W(reader_ty); W("_"); W(fname); W("_begin(const "); W(reader_ty); W(" *r)\n{\n");
 	W("\t"); W(reader_ty); W("_"); W(fname); W("_iter it = {0};\n");
@@ -548,6 +562,26 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 	const char *vtype = slot_out_param_type(arena, val);
 	if (ktype == NULL || vtype == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 
+	W("/*@ requires \\valid(it) && \\valid(out_key) && \\valid(out_value);\n"
+	  "    requires "); W(iter_ok); W("(*it);\n"
+	  "    requires \\separated(it, out_key, out_value,\n"
+	  "                        it->src + (0 .. it->src_len - 1));\n"
+	  "    assigns *it, *out_key, *out_value;\n"
+	  "    ensures "); W(iter_ok); W("(*it);\n"
+	  "    ensures it->src == \\old(it->src) && it->src_len == \\old(it->src_len);\n"
+	  "    ensures \\old(it->count_remaining) > 0 && \\result == GREMLIN_OK ==>\n"
+	  "              it->count_remaining == \\old(it->count_remaining) - 1;\n");
+	if (key->kind == GREMLINC_MS_BYTES) {
+		W("    ensures \\result == GREMLIN_OK ==> "); W(MAP_KEY_SPAN); W(";\n");
+	}
+	if (val->kind == GREMLINC_MS_BYTES) {
+		W("    ensures \\result == GREMLIN_OK ==> "); W(MAP_VALUE_SPAN); W(";\n");
+	}
+	if (val->kind == GREMLINC_MS_MESSAGE &&
+	    (err = gremlinc_emit_child_reader_ok(w, val->msg_ref, "out_value")) != GREMLINP_OK)
+		return err;
+	if ((err = gremlinc_emit_error_set(w)) != GREMLINP_OK) return err;
+	W("*/\n");
 	W("static inline enum gremlin_error\n");
 	W(reader_ty); W("_"); W(fname); W("_next(");
 	W(reader_ty); W("_"); W(fname); W("_iter *it, ");
@@ -562,6 +596,7 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 		const char *tn = val->msg_ref->c_name;
 		W("\tenum gremlin_error _ve0 = "); W(tn); W("_reader_init(out_value, NULL, 0);\n");
 		W("\tif (_ve0 != GREMLIN_OK) return _ve0;\n");
+		W("\tstruct gremlin_bytes _vspan = { NULL, 0 };\n");
 	} else {
 		W("\t*out_value = "); W(slot_default_literal(val)); W(";\n");
 	}
@@ -577,6 +612,24 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 	  "\tsize_t eoff = 0;\n");
 	/* Walk the entry's inner tags: field 1 = key, field 2 = value,
 	 * skip everything else (forward-compat). */
+	W("\t/*@ loop invariant eoff <= elen;\n"
+	  "\t    loop invariant ebuf == _entry.bytes.data && elen == _entry.bytes.len;\n"
+	  "\t    loop invariant gremlin_span_in(_entry.bytes, (uint8_t *)it->src, it->src_len);\n");
+	if (key->kind == GREMLINC_MS_BYTES) {
+		W("\t    loop invariant "); W(MAP_KEY_SPAN); W(";\n");
+	}
+	if (val->kind == GREMLINC_MS_BYTES) {
+		W("\t    loop invariant "); W(MAP_VALUE_SPAN); W(";\n");
+	}
+	if (val->kind == GREMLINC_MS_MESSAGE) {
+		W("\t    loop invariant _vspan.len == 0 ||\n"
+		  "\t                   gremlin_span_in(_vspan, (uint8_t *)it->src, it->src_len);\n");
+		W("\t    loop assigns eoff, *out_key, *out_value, _vspan;\n");
+	} else {
+		W("\t    loop assigns eoff, *out_key, *out_value;\n");
+	}
+	W("\t    loop variant elen - eoff;\n"
+	  "\t*/\n");
 	W("\twhile (eoff < elen) {\n");
 	W("\t\tstruct gremlin_varint32_decode_result t =\n"
 	  "\t\t\tgremlin_varint32_decode(ebuf + eoff, elen - eoff);\n"
@@ -590,7 +643,7 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 	W("\t\t\tcontinue;\n\t\t}\n");
 	W("\t\tif (t.value == "); WI((int32_t)val_tag); W("u) {\n");
 	{
-		const char *vout = (val->kind == GREMLINC_MS_MESSAGE) ? "out_value" : "(*out_value)";
+		const char *vout = (val->kind == GREMLINC_MS_MESSAGE) ? "_vspan" : "(*out_value)";
 		if ((err = emit_slot_decode(w, val, vout)) != GREMLINP_OK) return err;
 	}
 	W("\t\t\tcontinue;\n\t\t}\n");
@@ -601,7 +654,13 @@ gremlinc_map_emit_getter(struct gremlinc_writer *w,
 	  "\t\tif (sk.error != GREMLIN_OK) return sk.error;\n"
 	  "\t\teoff += sk.consumed;\n");
 	W("\t}\n");
+	if (val->kind == GREMLINC_MS_MESSAGE) {
+		W("\tenum gremlin_error _ve = "); W(val->msg_ref->c_name);
+		W("_reader_init(out_value, _vspan.data, _vspan.len);\n"
+		  "\tif (_ve != GREMLIN_OK) return _ve;\n");
+	}
 	/* Scan forward in outer buffer to next matching tag. */
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t", false)) != GREMLINP_OK) return err;
 	W("\twhile (it->count_remaining > 0 && it->offset < it->src_len) {\n"
 	  "\t\tstruct gremlin_varint32_decode_result nt =\n"
 	  "\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"

@@ -150,6 +150,38 @@ test_map_kv_value(void)
 	return 0;
 }
 
+static int
+test_map_kv_bad_value(void)
+{
+	/* Entry key 1 with a truncated value, then an empty one. */
+	static const uint8_t buf[] = {
+		0x2a, 0x08, 0x08, 0x01, 0x12, 0x02, 0x08, 0x80, 0x12, 0x00,
+	};
+	map_test_TestMap_reader reader;
+	enum gremlin_error err = map_test_TestMap_reader_init(&reader, buf, sizeof buf);
+	TEST_ASSERT_EQ_INT(GREMLIN_OK, err);
+
+	map_test_TestMap_reader_int32_to_message_field_iter it =
+		map_test_TestMap_reader_int32_to_message_field_begin(&reader);
+	int32_t k;
+	map_test_TestMap_MessageValue_reader v;
+	err = map_test_TestMap_reader_int32_to_message_field_next(&it, &k, &v);
+	TEST_ASSERT_EQ_INT(GREMLIN_ERROR_TRUNCATED, err);
+	return 0;
+}
+
+static int
+test_absent_defaults(void)
+{
+	protobuf_unittest_TestAllTypes_reader r;
+	enum gremlin_error err = protobuf_unittest_TestAllTypes_reader_init(&r, NULL, 0);
+	TEST_ASSERT_EQ_INT(GREMLIN_OK, err);
+	TEST_ASSERT_EQ_STR("hello", protobuf_unittest_TestAllTypes_reader_get_default_string(&r));
+	TEST_ASSERT_EQ_STR("world", protobuf_unittest_TestAllTypes_reader_get_default_bytes(&r));
+	TEST_ASSERT_EQ_STR("world", protobuf_unittest_TestAllTypes_reader_get_default_bytes(NULL));
+	return 0;
+}
+
 /* Matches `test "negative values"` in main.zig:112. */
 static const uint8_t NEGATIVE_VALUES_EXPECTED[] = {
 	8, 156, 255, 255, 255, 255, 255, 255, 255, 255, 1,
@@ -1073,6 +1105,8 @@ static const struct test_case TESTS[] = {
 	{ "simple read",     test_simple_read     },
 	{ "map kv: empty",   test_map_kv_empty    },
 	{ "map kv: value",   test_map_kv_value    },
+	{ "map kv: bad value", test_map_kv_bad_value },
+	{ "absent defaults", test_absent_defaults },
 	{ "negative values", test_negative_values },
 	{ "complex write",   test_complex_write   },
 	{ "complex read",    test_complex_read    },

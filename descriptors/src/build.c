@@ -217,6 +217,7 @@ fill_enum(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 	out->parent = parent;
 	out->values.items = NULL;
 	out->values.count = 0;
+	out->c_name = NULL;
 
 	/* Count values in this enum's body. */
 	size_t n_values = 0;
@@ -272,6 +273,9 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 	out->parent = parent;
 	out->fields.items = NULL;
 	out->fields.count = 0;
+	/* The arena is not zeroed; the naming passes set these. */
+	out->c_name = NULL;
+	out->c_reader_ok = NULL;
 
 	/* Local count of this message's own fields (not recursive).  Oneof
 	 * entries contribute their inner fields — oneof semantics are

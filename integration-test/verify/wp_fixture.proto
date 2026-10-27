@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package wp;
+
+import "wp_defaults.proto";
+
+enum Color {
+    COLOR_NONE = 0;
+    COLOR_RED = 1;
+}
+
+message Inner {
+    int32 a = 1;
+    string s = 2;
+}
+
+// One field of every family the generator emits.
+message All {
+    int32 i32 = 1;
+    int64 i64 = 2;
+    uint32 u32 = 3;
+    uint64 u64 = 4;
+    sint32 s32 = 5;
+    sint64 s64 = 6;
+    fixed32 f32 = 7;
+    fixed64 f64 = 8;
+    sfixed32 sf32 = 9;
+    sfixed64 sf64 = 10;
+    float fl = 11;
+    double db = 12;
+    bool b = 13;
+    string str = 14;
+    bytes raw = 15;
+    Color color = 16;
+    Inner inner = 17;
+
+    repeated int64 r_varint = 20;
+    repeated fixed32 r_f32 = 21;
+    repeated double r_f64 = 22;
+    repeated Color r_color = 23;
+    repeated bytes r_raw = 24;
+    repeated Inner r_inner = 25;
+    map<string, int32> m_scalar = 26;
+    map<int64, Inner> m_msg = 27;
+
+    // C identifiers but ACSL keywords; the generator must rename them.
+    bool boolean = 28;
+    bytes alignof = 29;
+}
+
+// Mutually recursive: each one's contracts name the other's reader, which
+// the header has to declare before either.
+message Ping {
+    Pong pong = 1;
+    repeated Pong pongs = 2;
+    map<int32, Pong> by_id = 3;
+}
+
+message Pong {
+    Ping ping = 1;
+    int32 n = 2;
+}
+
+// Named like Inner's reader predicate, so the predicate is renamed and the
+// contracts that name it must follow.
+message Inner_reader_ok {
+    int32 x = 1;
+}
+
+// A map value wide enough that its reader predicate is costly to carry
+// across the iterator's scan loop.
+message Wide {
+    bytes raw = 1;
+    string s = 2;
+    oneof o {
+        bytes ob = 3;
+        string os = 4;
+    }
+    Color c = 5;
+    map<int32, Wide> self = 6;
+    repeated Inner inners = 7;
+}
+
+message HasWide {
+    map<string, Wide> mw = 1;
+}

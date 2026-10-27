@@ -59,6 +59,7 @@ set(TEST_SOURCES
     tests/naming_test.c
     tests/const_convert_test.c
     tests/enum_test.c
+    tests/message_test.c
 )
 
 add_executable(gremlinc_tests ${TEST_SOURCES})

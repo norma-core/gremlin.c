@@ -60,6 +60,10 @@ struct gremlinc_name_scope {
 void					gremlinc_name_scope_init(struct gremlinc_name_scope *s,
 								 struct gremlind_arena *arena);
 
+/* Takes the logic names the read contracts use, which a type named the same
+ * would hide from Frama-C. */
+enum gremlinp_parsing_error		gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s);
+
 /* True if `name` is already registered in the scope. */
 bool					gremlinc_name_scope_has(const struct gremlinc_name_scope *s,
 								const char *name);
@@ -85,7 +89,7 @@ const char *				gremlinc_name_scope_mangle(struct gremlinc_name_scope *s,
 const char *				gremlinc_cname_for_type(struct gremlinc_name_scope *s,
 								const struct gremlind_scoped_name *sn);
 
-/* True if `name` is a C11 keyword (44 total). */
+/* True if `name` is a C11 keyword (44 total) or a word ACSL reserves. */
 bool					gremlinc_is_c_keyword(const char *name);
 
 /*

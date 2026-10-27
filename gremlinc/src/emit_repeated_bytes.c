@@ -95,6 +95,8 @@ enum gremlinp_parsing_error
 gremlinc_repeated_bytes_emit_getter(struct gremlinc_writer *w,
 				    const struct gremlind_field *f,
 				    const char *reader_ty,
+				    const char *reader_ok,
+				    const char *iter_ok,
 				    const char *fname)
 {
 	enum gremlinp_parsing_error err;
@@ -107,8 +109,10 @@ gremlinc_repeated_bytes_emit_getter(struct gremlinc_writer *w,
 	W("\tsize_t\t\t offset;\n");
 	W("\tsize_t\t\t count_remaining;\n");
 	W("} "); W(reader_ty); W("_"); W(fname); W("_iter;\n\n");
+	if ((err = gremlinc_emit_iter_ok(w, iter_ok, reader_ty, fname, false)) != GREMLINP_OK) return err;
 
 	/* <reader_ty>_<fname>_count(r) */
+	if ((err = gremlinc_emit_iter_count_spec(w, fname)) != GREMLINP_OK) return err;
 	W("static inline size_t\n");
 	W(reader_ty); W("_"); W(fname); W("_count(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -116,6 +120,7 @@ gremlinc_repeated_bytes_emit_getter(struct gremlinc_writer *w,
 	W("\treturn r->"); W(fname); W("_count;\n}\n\n");
 
 	/* <reader_ty>_<fname>_begin(r) */
+	if ((err = gremlinc_emit_iter_begin_spec(w, reader_ok, iter_ok, fname)) != GREMLINP_OK) return err;
 	W("static inline "); W(reader_ty); W("_"); W(fname); W("_iter\n");
 	W(reader_ty); W("_"); W(fname); W("_begin(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -128,6 +133,10 @@ gremlinc_repeated_bytes_emit_getter(struct gremlinc_writer *w,
 	W("\treturn it;\n}\n\n");
 
 	/* <reader_ty>_<fname>_next(it, out) */
+	if ((err = gremlinc_emit_iter_next_spec(w, iter_ok,
+		"\\result == GREMLIN_OK ==>\n"
+		"              out->len == 0 || gremlin_span_in(*out, (uint8_t *)it->src, it->src_len)", NULL))
+	    != GREMLINP_OK) return err;
 	W("static inline enum gremlin_error\n");
 	W(reader_ty); W("_"); W(fname); W("_next(");
 	W(reader_ty); W("_"); W(fname); W("_iter *it, struct gremlin_bytes *out)\n{\n");
@@ -141,6 +150,7 @@ gremlinc_repeated_bytes_emit_getter(struct gremlinc_writer *w,
 	  "\tit->offset += d.consumed;\n"
 	  "\tit->count_remaining--;\n");
 	/* Scan forward to next matching tag if more elements remain. */
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t", false)) != GREMLINP_OK) return err;
 	W("\twhile (it->count_remaining > 0 && it->offset < it->src_len) {\n");
 	W("\t\tstruct gremlin_varint32_decode_result t =\n"
 	  "\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"

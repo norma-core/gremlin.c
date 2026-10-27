@@ -71,3 +71,26 @@ endif()
 
 enable_testing()
 add_test(NAME integration_test COMMAND integration_test)
+
+# Frama-C WP over the read side of generated code, on a fixture with one field
+# of every family. Not part of `make` or ctest: it takes minutes.
+gremlinc_generate(
+    TARGET       wp_fixture
+    IMPORTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/verify
+    PROTOS       wp_fixture.proto wp_defaults.proto
+)
+find_program(FRAMAC frama-c)
+if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)
+    add_custom_target(verify-generated
+        COMMAND ${CMAKE_COMMAND}
+            -DFRAMAC=${FRAMAC}
+            -DHEADER=${CMAKE_CURRENT_BINARY_DIR}/wp_fixture/wp_fixture.pb.h
+            -DRUNTIME_INCLUDE=${REPO_ROOT}/runtime/include
+            -DREPORT=${CMAKE_CURRENT_BINARY_DIR}/verify-generated.json
+            -DCALLERS=${CMAKE_CURRENT_SOURCE_DIR}/verify/wp_callers.c
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/verify/verify_reader.cmake
+        DEPENDS wp_fixture_generate
+        COMMENT "WP: read side of generated code"
+        VERBATIM
+    )
+endif()

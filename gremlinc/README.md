@@ -67,6 +67,12 @@ A typical codegen run runs these passes in order on a
 Each pass is idempotent after its prerequisites; the context carries
 state, not the caller.
 
+A contract names a held message's predicate, `c_reader_ok`, which
+`gremlinc_emit_message` sets. When a message is held before it is
+emitted (mutual recursion, an import listed later), `gremlinc-gen` emits
+once to learn the names, then emits again with that message's reader
+struct and predicate moved up front (`gremlinc_emit_message_marked`).
+
 ## 🧩 Per-family emit modules
 
 Per-field codegen is split across one `.c` file per wire-shape family.

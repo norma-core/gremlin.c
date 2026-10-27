@@ -16,12 +16,20 @@ static const char *const C_KEYWORDS[] = {
 };
 #define N_C_KEYWORDS (sizeof(C_KEYWORDS) / sizeof(C_KEYWORDS[0]))
 
+/* Not C, but an ACSL type name: as a field name it would make the contracts
+ * in generated code unparseable for Frama-C. */
+static const char *const ACSL_RESERVED[] = { "boolean", "alignof" };
+#define N_ACSL_RESERVED (sizeof(ACSL_RESERVED) / sizeof(ACSL_RESERVED[0]))
+
 bool
 gremlinc_is_c_keyword(const char *name)
 {
 	if (name == NULL) return false;
 	for (size_t i = 0; i < N_C_KEYWORDS; i++) {
 		if (strcmp(C_KEYWORDS[i], name) == 0) return true;
+	}
+	for (size_t i = 0; i < N_ACSL_RESERVED; i++) {
+		if (strcmp(ACSL_RESERVED[i], name) == 0) return true;
 	}
 	return false;
 }
@@ -139,6 +147,18 @@ scope_register(struct gremlinc_name_scope *s, const char *name)
 	e->next = s->head;
 	s->head = e;
 	s->count++;
+	return GREMLINP_OK;
+}
+
+enum gremlinp_parsing_error
+gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s)
+{
+	static const char *const names[] = { "integer", "gremlin_span_in" };
+
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (scope_register(s, names[i]) != GREMLINP_OK)
+			return GREMLINP_ERROR_OUT_OF_MEMORY;
+	}
 	return GREMLINP_OK;
 }
 

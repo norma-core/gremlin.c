@@ -166,15 +166,16 @@ emit_elem_encode(struct gremlinc_writer *w,
 }
 
 /* Emit the decode statement for a single element (NO tag assumed —
- * caller already consumed any outer tag).  Reads from `ebuf + eoff`
- * over a `elen` limit, writes into `*out`, advances `eoff`. */
+ * caller already consumed any outer tag).  Reads from `it->offset` up to
+ * `end`, writes into `*out`, advances `it->offset`. */
 static enum gremlinp_parsing_error
-emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e)
+emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e,
+		 const char *end)
 {
 	enum gremlinp_parsing_error err;
 	if (e->is_enum) {
 		W("\t\tstruct gremlin_varint_decode_result _d =\n"
-		  "\t\t\tgremlin_varint_decode(it->src + it->offset, it->src_len - it->offset);\n"
+		  "\t\t\tgremlin_varint_decode(it->src + it->offset, "); W(end); W(" - it->offset);\n"
 		  "\t\tif (_d.error != GREMLIN_OK) return _d.error;\n"
 		  "\t\tit->offset += _d.consumed;\n"
 		  "\t\t*out = ("); W(e->enumeration->c_name);
@@ -184,7 +185,7 @@ emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e)
 	switch (e->wire) {
 	case WT_FIXED32_NUM:
 		W("\t\tstruct gremlin_fixed32_decode_result _d =\n"
-		  "\t\t\tgremlin_fixed32_decode(it->src + it->offset, it->src_len - it->offset);\n"
+		  "\t\t\tgremlin_fixed32_decode(it->src + it->offset, "); W(end); W(" - it->offset);\n"
 		  "\t\tif (_d.error != GREMLIN_OK) return _d.error;\n"
 		  "\t\tit->offset += 4;\n");
 		switch (e->kind) {
@@ -196,7 +197,7 @@ emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e)
 		return GREMLINP_OK;
 	case WT_FIXED64_NUM:
 		W("\t\tstruct gremlin_fixed64_decode_result _d =\n"
-		  "\t\t\tgremlin_fixed64_decode(it->src + it->offset, it->src_len - it->offset);\n"
+		  "\t\t\tgremlin_fixed64_decode(it->src + it->offset, "); W(end); W(" - it->offset);\n"
 		  "\t\tif (_d.error != GREMLIN_OK) return _d.error;\n"
 		  "\t\tit->offset += 8;\n");
 		switch (e->kind) {
@@ -209,7 +210,7 @@ emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e)
 	}
 	/* VARINT */
 	W("\t\tstruct gremlin_varint_decode_result _d =\n"
-	  "\t\t\tgremlin_varint_decode(it->src + it->offset, it->src_len - it->offset);\n"
+	  "\t\t\tgremlin_varint_decode(it->src + it->offset, "); W(end); W(" - it->offset);\n"
 	  "\tif (_d.error != GREMLIN_OK) return _d.error;\n"
 	  "\tit->offset += _d.consumed;\n");
 	switch (e->kind) {
@@ -352,6 +353,11 @@ gremlinc_repeated_scalar_emit_reader_arm(struct gremlinc_writer *w,
 	} else {
 		/* VARINT: count continuation-terminator bytes. */
 		W("\t\t\tsize_t _bcnt = 0;\n");
+		W("\t\t\t/*@ loop invariant 0 <= _bi <= _bd.bytes.len;\n"
+		  "\t\t\t    loop invariant _bcnt <= _bi;\n"
+		  "\t\t\t    loop assigns _bi, _bcnt;\n"
+		  "\t\t\t    loop variant _bd.bytes.len - _bi;\n"
+		  "\t\t\t*/\n");
 		W("\t\t\tfor (size_t _bi = 0; _bi < _bd.bytes.len; _bi++) {\n"
 		  "\t\t\t\tif ((_bd.bytes.data[_bi] & 0x80u) == 0) _bcnt++;\n"
 		  "\t\t\t}\n");
@@ -407,6 +413,8 @@ enum gremlinp_parsing_error
 gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 				     const struct gremlind_field *f,
 				     const char *reader_ty,
+				     const char *reader_ok,
+				     const char *iter_ok,
 				     const char *fname,
 				     const char *packed_bool_fname)
 {
@@ -426,8 +434,10 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\tsize_t\t\t count_remaining;\n");
 	W("\tbool\t\t is_packed;\n");
 	W("} "); W(reader_ty); W("_"); W(fname); W("_iter;\n\n");
+	if ((err = gremlinc_emit_iter_ok(w, iter_ok, reader_ty, fname, true)) != GREMLINP_OK) return err;
 
 	/* count */
+	if ((err = gremlinc_emit_iter_count_spec(w, fname)) != GREMLINP_OK) return err;
 	W("static inline size_t\n");
 	W(reader_ty); W("_"); W(fname); W("_count(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -435,6 +445,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\treturn r->"); W(fname); W("_count;\n}\n\n");
 
 	/* begin */
+	if ((err = gremlinc_emit_iter_begin_spec(w, reader_ok, iter_ok, fname)) != GREMLINP_OK) return err;
 	W("static inline "); W(reader_ty); W("_"); W(fname); W("_iter\n");
 	W(reader_ty); W("_"); W(fname); W("_begin(const "); W(reader_ty);
 	W(" *r)\n{\n");
@@ -448,6 +459,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\treturn it;\n}\n\n");
 
 	/* next */
+	if ((err = gremlinc_emit_iter_next_spec(w, iter_ok, NULL, NULL)) != GREMLINP_OK) return err;
 	W("static inline enum gremlin_error\n");
 	W(reader_ty); W("_"); W(fname); W("_next(");
 	W(reader_ty); W("_"); W(fname); W("_iter *it, ");
@@ -463,6 +475,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\tif (it->is_packed) {\n");
 	W("\t\tif (it->block_end <= it->offset) {\n");
 	/* Scan forward for next PACKED_TAG. */
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t\t\t", true)) != GREMLINP_OK) return err;
 	W("\t\t\twhile (it->offset < it->src_len) {\n"
 	  "\t\t\t\tstruct gremlin_varint32_decode_result _t =\n"
 	  "\t\t\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"
@@ -473,6 +486,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	  "\t\t\t\t\t\tgremlin_varint_decode(it->src + it->offset, it->src_len - it->offset);\n"
 	  "\t\t\t\t\tif (_l.error != GREMLIN_OK) return _l.error;\n"
 	  "\t\t\t\t\tit->offset += _l.consumed;\n"
+	  "\t\t\t\t\tif (_l.value > it->src_len - it->offset) return GREMLIN_ERROR_TRUNCATED;\n"
 	  "\t\t\t\t\tit->block_end = it->offset + (size_t)_l.value;\n"
 	  "\t\t\t\t\tbreak;\n\t\t\t\t}\n");
 	W("\t\t\t\tunsigned _wt = (unsigned)(_t.value % 8u);\n"
@@ -486,12 +500,14 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\t\t}\n");
 	/* Decode next element within the current block. */
 	W("\t\t{\n");
-	if ((err = emit_elem_decode(w, &e)) != GREMLINP_OK) return err;
+	if ((err = emit_elem_decode(w, &e, "it->block_end")) != GREMLINP_OK) return err;
 	W("\t\t}\n");
+	W("\t\t/*@ assert it->offset <= it->block_end; */\n");
 	W("\t\tit->count_remaining--;\n");
 	W("\t\tif (it->offset >= it->block_end) it->block_end = 0;\n");
 	W("\t\treturn GREMLIN_OK;\n\t}\n");
 	/* Unpacked branch */
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t", false)) != GREMLINP_OK) return err;
 	W("\twhile (it->offset < it->src_len) {\n"
 	  "\t\tstruct gremlin_varint32_decode_result _t =\n"
 	  "\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"
@@ -500,7 +516,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\t\tif (_t.value == "); WI((int32_t)unpacked_tag); W("u) {\n");
 	/* Decode a single element */
 	W("\t\t\t{\n");
-	if ((err = emit_elem_decode(w, &e)) != GREMLINP_OK) return err;
+	if ((err = emit_elem_decode(w, &e, "it->src_len")) != GREMLINP_OK) return err;
 	W("\t\t\t}\n");
 	W("\t\t\tit->count_remaining--;\n");
 	W("\t\t\treturn GREMLIN_OK;\n\t\t}\n");

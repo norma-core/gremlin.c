@@ -172,6 +172,8 @@ struct gremlind_message {
 	 * pass has run.
 	 */
 	const char				*c_name;
+	/* The reader's ACSL predicate as mangled, NULL until the message is emitted. */
+	const char				*c_reader_ok;
 };
 
 struct gremlind_messages {
