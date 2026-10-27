@@ -5,6 +5,7 @@
 #include "gremlinc/emit.h"
 #include "gremlinc/const_convert.h"
 #include "gremlinc/naming.h"
+#include "gremlind/resolve.h"
 
 #include "emit_common.h"
 
@@ -333,20 +334,39 @@ gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 				return GREMLINP_ERROR_OUT_OF_MEMORY;
 		}
 	}
-	for (size_t i = 0; i < file->messages.count; i++) {
-		const struct gremlind_message *m = &file->messages.items[i];
+	/* Every public name in the order emission claims them, so each lands on
+	 * the name it will have. */
+	struct gremlind_message_order order;
+	enum gremlinp_parsing_error err =
+		gremlind_topo_sort_messages(a, (struct gremlind_file *)file, &order);
+	if (err != GREMLINP_OK) return err;
+	for (size_t i = 0; i < order.count; i++) {
+		const struct gremlind_message *m = order.items[i];
 		struct gremlinc_name_scope members;
 		gremlinc_name_scope_init(&members, a);
 		if (gremlinc_name_scope_mangle(&members, "src", 3) == NULL ||
 		    gremlinc_name_scope_mangle(&members, "src_len", 7) == NULL ||
 		    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL)
 			return GREMLINP_ERROR_OUT_OF_MEMORY;
-		const char *reader = claim_join2(reserved, m->c_name, "_reader");
-		if (reader == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		const char *reader;
+		if (claim_join2(reserved, m->c_name, "_size") == NULL ||
+		    claim_join2(reserved, m->c_name, "_encode") == NULL ||
+		    (reader = claim_join2(reserved, m->c_name, "_reader")) == NULL ||
+		    claim_join2(reserved, reader, "_init") == NULL)
+			return GREMLINP_ERROR_OUT_OF_MEMORY;
 		for (size_t j = 0; j < m->fields.count; j++) {
-			const char *fn = field_cname(&members, &m->fields.items[j]);
+			const struct gremlind_field *fld = &m->fields.items[j];
+			const char *fn = field_cname(&members, fld);
 			if (fn == NULL || claim_join3(reserved, reader, "_get_", fn) == NULL)
 				return GREMLINP_ERROR_OUT_OF_MEMORY;
+			if (field_is_repeated_scalar(fld) &&
+			    claim_join2(&members, fn, "_packed") == NULL)
+				return GREMLINP_ERROR_OUT_OF_MEMORY;
+			if (field_is_map(fld)) {
+				const char *pre = claim_pred_prefix(a, m->c_name, fn);
+				if (pre == NULL || claim_join2(reserved, pre, "_entry") == NULL)
+					return GREMLINP_ERROR_OUT_OF_MEMORY;
+			}
 		}
 	}
 	return GREMLINP_OK;
