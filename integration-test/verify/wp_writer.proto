@@ -34,11 +34,11 @@ message List {
     repeated Leaf leaves = 2;
 }
 
-// A repeated message whose element has children and a sum of its own.
+// A repeated message whose element has sums of its own.
 message Pair {
-    Leaf a = 1;
-    Leaf b = 2;
-    repeated uint64 v = 3;
+    uint64 x = 1;
+    repeated uint64 v = 2;
+    bytes raw = 3;
 }
 
 message Pairs {

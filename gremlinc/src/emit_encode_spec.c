@@ -49,6 +49,7 @@ struct ep_msg {
 	bool				 ok;
 	bool				 rep;	/* repeated message somewhere below */
 	bool				 elem;	/* element of a repeated message field */
+	bool				 kids;	/* has a message field */
 	size_t				 weight;	/* nodes and 64-bit fields below */
 	size_t				 nf;
 	struct ep_field			*f;
@@ -248,6 +249,8 @@ classify(const struct gremlinc_encode_plan *p, size_t self,
 		out->kind = rep ? EK_REP_MSG : EK_MSG;
 		out->tagb = tag_bytes(f, WT_LEN_PREFIX_NUM);
 		if (rep && p->msgs[out->child].rep) return false;
+		/* A loop over elements with children of their own does not prove in time. */
+		if (rep && p->msgs[out->child].kids) return false;
 		return true;
 	case GREMLIND_TYPE_REF_ENUM:
 		if (rep) {
@@ -394,6 +397,7 @@ gremlinc_encode_plan_build(struct gremlind_arena *arena,
 				e->weight++;
 			if (is_child(f->kind)) e->weight += p->msgs[f->child].weight;
 			if (is_child(f->kind)) slots++;
+			if (is_child(f->kind)) e->kids = true;
 			if (f->kind == EK_REP_MSG) rep_slot = true;
 		}
 		/* A repeated message next to other message fields is not proved yet. */
