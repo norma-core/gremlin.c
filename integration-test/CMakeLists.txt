@@ -106,6 +106,7 @@ if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)
             -DRUNTIME_INCLUDE=${REPO_ROOT}/runtime/include
             -DREPORT=${CMAKE_CURRENT_BINARY_DIR}/verify-generated-write.json
             -DPROTO=${CMAKE_CURRENT_SOURCE_DIR}/verify/wp_writer.proto
+            -DCALLERS=${CMAKE_CURRENT_SOURCE_DIR}/verify/wp_writer_callers.c
             -P ${CMAKE_CURRENT_SOURCE_DIR}/verify/verify_writer.cmake
         DEPENDS wp_writer_generate
         COMMENT "WP: write side of generated code"

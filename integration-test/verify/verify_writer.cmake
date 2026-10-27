@@ -2,7 +2,7 @@
 # defines, the ghost helpers their proofs call, and the lemmas. Lemmas go in a
 # second run: their induction needs the tip prover.
 #
-#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] -P verify_writer.cmake
+#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>] -P verify_writer.cmake
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
@@ -53,12 +53,29 @@ endforeach()
 if(NOT _fcts)
     message(FATAL_ERROR "no writer functions found in ${HEADER}")
 endif()
+if(CALLERS)
+    file(STRINGS "${CALLERS}" _callers REGEX "^caller_[A-Za-z0-9_]*\\(")
+    foreach(_line IN LISTS _callers)
+        string(REGEX MATCH "^caller_[A-Za-z0-9_]*" _c "${_line}")
+        list(APPEND _fcts ${_c})
+    endforeach()
+    if(NOT _callers)
+        message(FATAL_ERROR "no caller_* functions found in ${CALLERS}")
+    endif()
+endif()
 string(REPLACE ";" "," _fcts_arg "${_fcts}")
 
 get_filename_component(_dir "${HEADER}" DIRECTORY)
 get_filename_component(_name "${HEADER}" NAME)
 set(_drive "${_dir}/verify_writer_drive.c")
 file(WRITE "${_drive}" "#include \"${_name}\"\n")
+set(_inc "-I${_dir} -I${RUNTIME_INCLUDE}")
+if(CALLERS)
+    get_filename_component(_callers_dir "${CALLERS}" DIRECTORY)
+    get_filename_component(_callers_name "${CALLERS}" NAME)
+    file(APPEND "${_drive}" "#include \"${_callers_name}\"\n")
+    string(APPEND _inc " -I${_callers_dir}")
+endif()
 
 include(ProcessorCount)
 ProcessorCount(_nproc)
@@ -79,7 +96,7 @@ set(_common
     -kernel-warn-key annot:missing-spec=inactive
     -wp-warn-key pedantic-assigns=inactive
     -wp-no-warn-memory-model
-    -cpp-extra-args=-I${_dir}\ -I${RUNTIME_INCLUDE})
+    -cpp-extra-args=${_inc})
 
 function(_run report)
     file(REMOVE "${report}")
