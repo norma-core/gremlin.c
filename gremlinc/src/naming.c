@@ -153,7 +153,12 @@ scope_register(struct gremlinc_name_scope *s, const char *name)
 enum gremlinp_parsing_error
 gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s)
 {
-	static const char *const names[] = { "integer", "gremlin_span_in" };
+	static const char *const names[] = {
+		"integer", "gremlin_span_in",
+		"b", "e", "ebuf", "elen", "eoff", "hi", "hi2", "i", "it", "j", "k", "len", "lo",
+		"lo2", "m", "n", "offset", "out", "out_key", "out_value", "p", "q", "r", "s",
+		"src", "t", "w"
+	};
 
 	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
 		if (scope_register(s, names[i]) != GREMLINP_OK)

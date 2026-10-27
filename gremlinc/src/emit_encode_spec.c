@@ -221,20 +221,6 @@ scalar_supported(enum scalar_kind k)
  * Plan
  * ------------------------------------------------------------------------ */
 
-/* Names the write-side annotations bind or refer to. Frama-C reads a typedef
- * of the same name as a type there, so such a type keeps no contracts. */
-static const char *const BINDERS[] = {
-	"b", "e", "hi", "hi2", "i", "j", "k", "lo", "lo2", "m", "n", "p", "q", "s", "t", "w"
-};
-
-static bool
-binder(const char *name)
-{
-	for (size_t i = 0; i < sizeof BINDERS / sizeof BINDERS[0]; i++)
-		if (strcmp(BINDERS[i], name) == 0) return true;
-	return false;
-}
-
 static int
 find_msg(const struct gremlinc_encode_plan *p, const struct gremlind_message *m,
 	 size_t upto)
@@ -264,7 +250,6 @@ classify(const struct gremlinc_encode_plan *p, size_t self,
 		if (rep && p->msgs[out->child].rep) return false;
 		return true;
 	case GREMLIND_TYPE_REF_ENUM:
-		if (binder(f->type.u.enumeration->c_name)) return false;
 		if (rep) {
 			out->kind = EK_REP_VARINT;
 			out->ctype = f->type.u.enumeration->c_name;
@@ -393,7 +378,7 @@ gremlinc_encode_plan_build(struct gremlind_arena *arena,
 		e->nf = order[i]->fields.count;
 		e->f = gremlind_arena_alloc(arena, (e->nf ? e->nf : 1) * sizeof *e->f);
 		if (e->f == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
-		e->ok = !binder(order[i]->c_name);
+		e->ok = true;
 		for (size_t j = 0; j < e->nf && e->ok; j++) {
 			if (!classify(p, i, &order[i]->fields.items[j], &e->f[j])) e->ok = false;
 		}

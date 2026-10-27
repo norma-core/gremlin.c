@@ -60,8 +60,8 @@ struct gremlinc_name_scope {
 void					gremlinc_name_scope_init(struct gremlinc_name_scope *s,
 								 struct gremlind_arena *arena);
 
-/* Takes the logic names the read contracts use, which a type named the same
- * would hide from Frama-C. */
+/* Takes the logic names and the variables the contracts use, which a type
+ * named the same would hide from Frama-C: such a type gets a suffix. */
 enum gremlinp_parsing_error		gremlinc_name_scope_reserve_logic(struct gremlinc_name_scope *s);
 
 /* True if `name` is already registered in the scope. */

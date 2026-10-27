@@ -241,15 +241,14 @@ static TEST(lemma_names_are_unique_across_files)
 	gremlind_arena_free_malloc(&arena);
 }
 
-/* Frama-C reads a typedef named like a binder of the write-side annotations
- * as a type, so such a message and those holding it get no contracts. */
-static TEST(binder_named_type_gets_no_write_contracts)
+/* Frama-C reads a typedef named like a variable of the annotations as a type
+ * in every later annotation, so such a type takes a suffix. */
+static TEST(type_named_like_an_annotation_variable_gets_a_suffix)
 {
 	char src[] =
 		"syntax = \"proto3\";\n"
-		"message t { uint32 f = 1; }\n"
-		"message Holder { t a = 1; uint64 z = 2; }\n"
-		"message Ok { uint64 v = 1; }\n";
+		"message lo { uint32 f = 1; }\n"
+		"message Holder { lo a = 1; uint64 z = 2; }\n";
 	struct gremlind_arena arena;
 	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
 	struct gremlind_source gs;
@@ -259,20 +258,19 @@ static TEST(binder_named_type_gets_no_write_contracts)
 	struct gremlinc_name_scope s, logic;
 	gremlinc_name_scope_init(&s, &arena);
 	gremlinc_name_scope_init(&logic, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_name_scope_reserve_logic(&s));
 	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
-	struct gremlind_message *order[3] = {
-		&file->messages.items[0], &file->messages.items[1], &file->messages.items[2]
-	};
+	ASSERT_STR_EQ("lo_1", file->messages.items[0].c_name);
+	struct gremlind_message *order[2] = { &file->messages.items[0], &file->messages.items[1] };
 	struct gremlinc_encode_plan *plan;
-	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 3, &plan));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 2, &plan));
 	struct gremlinc_writer w;
 	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 4096));
-	for (size_t i = 0; i < 3; i++)
+	for (size_t i = 0; i < 2; i++)
 		ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, NULL, order[i], plan));
 	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
-	ASSERT_NULL(strstr(w.buf, "t_tsize_nonneg"));
-	ASSERT_NULL(strstr(w.buf, "Holder_tsize_nonneg"));
-	ASSERT_NOT_NULL(strstr(w.buf, "Ok_tsize_nonneg"));
+	ASSERT_NOT_NULL(strstr(w.buf, "void lo_1_tsize_nonneg(lo_1 *m)"));
+	ASSERT_NOT_NULL(strstr(w.buf, "void Holder_tsize_nonneg(Holder *m)"));
 	gremlinc_writer_dispose(&w);
 	gremlind_arena_free_malloc(&arena);
 }
@@ -287,5 +285,5 @@ void message_test(void)
 	RUN_TEST(predicate_does_not_take_an_imported_enum_value_name);
 	RUN_TEST(ghost_does_not_take_a_later_getter_name);
 	RUN_TEST(lemma_names_are_unique_across_files);
-	RUN_TEST(binder_named_type_gets_no_write_contracts);
+	RUN_TEST(type_named_like_an_annotation_variable_gets_a_suffix);
 }
