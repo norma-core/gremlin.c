@@ -346,7 +346,7 @@ gremlinc_emit_message_forward(struct gremlinc_writer *w,
 enum gremlinp_parsing_error
 gremlinc_emit_message(struct gremlinc_writer *w,
 		      struct gremlinc_name_scope *scope,
-		      const struct gremlind_message *m)
+		      struct gremlind_message *m)
 {
 	return gremlinc_emit_message_marked(w, scope, m, NULL, NULL);
 }
@@ -354,7 +354,7 @@ gremlinc_emit_message(struct gremlinc_writer *w,
 enum gremlinp_parsing_error
 gremlinc_emit_message_marked(struct gremlinc_writer *w,
 			     struct gremlinc_name_scope *scope,
-			     const struct gremlind_message *m,
+			     struct gremlind_message *m,
 			     size_t *decl_start, size_t *decl_end)
 {
 	if (w == NULL || scope == NULL || m == NULL) {
@@ -382,7 +382,7 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
 	/* Kept for the contracts of messages that hold this one. */
-	((struct gremlind_message *)m)->c_reader_ok = reader_ok;
+	m->c_reader_ok = reader_ok;
 
 	/* Per-message member scope. Pre-register the reader struct's
 	 * housekeeping fields so a proto field named "src" or "src_len"
@@ -422,19 +422,6 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		if (getter_fns[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 		entry_types[i] = NULL;
 		packed_names[i] = NULL;
-		iter_oks[i] = NULL;
-		if (field_is_repeated_bytes(fld) || field_is_repeated_msg(fld) ||
-		    field_is_map(fld) || field_is_repeated_scalar(fld)) {
-			size_t rl = strlen(reader_ty), fl = strlen(fnames[i]);
-			char *buf = gremlind_arena_alloc(scope->arena, rl + fl + 9);
-			if (buf == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
-			memcpy(buf, reader_ty, rl);
-			buf[rl] = '_';
-			memcpy(buf + rl + 1, fnames[i], fl);
-			memcpy(buf + rl + 1 + fl, "_iter_ok", 8);
-			iter_oks[i] = gremlinc_name_scope_mangle(scope, buf, rl + fl + 9);
-			if (iter_oks[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
-		}
 		if (field_is_repeated_scalar(fld)) {
 			/* Reserve `<fname>_packed` in the member scope; the
 			 * mangler takes care of collisions with proto fields
@@ -476,6 +463,23 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		if (defaults[i] == NULL) {
 			return GREMLINP_ERROR_INVALID_FIELD_VALUE;
 		}
+	}
+	/* After every getter, so a field named <f>_iter_ok keeps its getter. */
+	for (size_t i = 0; i < m->fields.count; i++) {
+		const struct gremlind_field *fld = &m->fields.items[i];
+		iter_oks[i] = NULL;
+		if (!field_is_repeated_bytes(fld) && !field_is_repeated_msg(fld) &&
+		    !field_is_map(fld) && !field_is_repeated_scalar(fld))
+			continue;
+		size_t rl = strlen(reader_ty), fl = strlen(fnames[i]);
+		char *buf = gremlind_arena_alloc(scope->arena, rl + fl + 9);
+		if (buf == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		memcpy(buf, reader_ty, rl);
+		buf[rl] = '_';
+		memcpy(buf + rl + 1, fnames[i], fl);
+		memcpy(buf + rl + 1 + fl, "_iter_ok", 8);
+		iter_oks[i] = gremlinc_name_scope_mangle(scope, buf, rl + fl + 9);
+		if (iter_oks[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
 
 	enum gremlinp_parsing_error err;
@@ -807,6 +811,11 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 			W("    ensures !(r != \\null && r->_has."); W(fnames[i]);
 			W(") ==>\n              \\result.len == 0 ||"
 			  " \\valid_read(\\result.data + (0 .. \\result.len - 1));\n");
+		} else if (sinfos[i] == NULL || (sinfos[i]->kind != SCALAR_FLOAT &&
+						 sinfos[i]->kind != SCALAR_DOUBLE)) {
+			/* Not for floats: a NaN default is never == itself. */
+			W("    ensures !(r != \\null && r->_has."); W(fnames[i]);
+			W(") ==> \\result == "); W(defaults[i]); W(";\n");
 		}
 		W("*/\n");
 		W("static inline "); W(rt); W("\n");

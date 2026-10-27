@@ -1,10 +1,14 @@
 # Proves every reader function of a generated header and the headers it includes.
-#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DCALLERS=<caller_* .c>] -P verify_reader.cmake
+#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DOUT_ROOT=<generator -o dir>] [-DCALLERS=<caller_* .c>] -P verify_reader.cmake
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
 
 get_filename_component(_dir "${HEADER}" DIRECTORY)
+# Generated includes are relative to the generator's output directory.
+if(NOT OUT_ROOT)
+    set(OUT_ROOT "${_dir}")
+endif()
 set(_headers "${HEADER}")
 set(_fcts)
 set(_i 0)
@@ -13,7 +17,7 @@ while(_i LESS _n)
     list(GET _headers ${_i} _h)
     file(STRINGS "${_h}" _incs REGEX "^#include \"[^\"]+\\.pb\\.h\"")
     foreach(_inc IN LISTS _incs)
-        string(REGEX REPLACE "^#include \"([^\"]+)\".*" "${_dir}/\\1" _inc "${_inc}")
+        string(REGEX REPLACE "^#include \"([^\"]+)\".*" "${OUT_ROOT}/\\1" _inc "${_inc}")
         if(NOT _inc IN_LIST _headers)
             list(APPEND _headers "${_inc}")
         endif()
@@ -58,7 +62,7 @@ if(CALLERS)
     get_filename_component(_callers_name "${CALLERS}" NAME)
     file(APPEND "${_drive}" "#include \"${_callers_name}\"\n")
 endif()
-set(_cpp "-I${_dir} -I${RUNTIME_INCLUDE}")
+set(_cpp "-I${_dir} -I${OUT_ROOT} -I${RUNTIME_INCLUDE}")
 if(_callers_dir)
     string(APPEND _cpp " -I${_callers_dir}")
 endif()

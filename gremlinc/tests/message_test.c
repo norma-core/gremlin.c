@@ -83,10 +83,36 @@ static TEST(predicate_does_not_take_an_enum_value_name)
 	gremlind_arena_free_malloc(&arena);
 }
 
+/* A field named <f>_iter_ok keeps the getter it had before contracts. */
+static TEST(iter_predicate_does_not_take_a_getter_name)
+{
+	char src[] =
+		"syntax = \"proto3\";\n"
+		"message A { repeated bytes get_x = 1; bytes x_iter_ok = 2; }\n";
+	struct gremlind_arena arena;
+	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 64 * 1024));
+	struct gremlind_source gs;
+	struct gremlind_file *file = build(&arena, &gs, src);
+	ASSERT_NOT_NULL(file);
+
+	struct gremlinc_name_scope s;
+	gremlinc_name_scope_init(&s, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
+	struct gremlinc_writer w;
+	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 4096));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, &file->messages.items[0]));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
+	ASSERT_NOT_NULL(strstr(w.buf, "\nA_reader_get_x_iter_ok(const A_reader *r)"));
+	ASSERT_NOT_NULL(strstr(w.buf, "predicate A_reader_get_x_iter_ok_1("));
+	gremlinc_writer_dispose(&w);
+	gremlind_arena_free_malloc(&arena);
+}
+
 void message_test(void);
 
 void message_test(void)
 {
 	RUN_TEST(emit_message_from_a_garbage_arena);
 	RUN_TEST(predicate_does_not_take_an_enum_value_name);
+	RUN_TEST(iter_predicate_does_not_take_a_getter_name);
 }

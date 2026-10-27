@@ -119,7 +119,8 @@ gremlinc_emit_iter_count_spec(struct gremlinc_writer *w, const char *fname)
 	W("/*@ requires r == \\null || \\valid_read(r);\n"
 	  "    assigns \\nothing;\n"
 	  "    ensures r != \\null ==> \\result == r->"); W(fname);
-	W("_count;\n*/\n");
+	W("_count;\n"
+	  "    ensures r == \\null ==> \\result == 0;\n*/\n");
 	return GREMLINP_OK;
 }
 

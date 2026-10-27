@@ -57,11 +57,11 @@ enum gremlinp_parsing_error	gremlinc_emit_enum(struct gremlinc_writer *w,
  * set-to-zero ambiguity can be resolved correctly.
  *
  * Requires gremlind_compute_scoped_names and gremlind_resolve_type_refs
- * to have run on the message's file beforehand.
+ * to have run on the message's file beforehand. Sets m->c_reader_ok.
  */
 enum gremlinp_parsing_error	gremlinc_emit_message(struct gremlinc_writer *w,
 						      struct gremlinc_name_scope *scope,
-						      const struct gremlind_message *m);
+						      struct gremlind_message *m);
 
 /*
  * Emit the forward declarations for an emittable message:
@@ -86,7 +86,7 @@ enum gremlinp_parsing_error	gremlinc_emit_message_forward(struct gremlinc_writer
  * predicate start and end in `w`, so a caller can move them up front. */
 enum gremlinp_parsing_error	gremlinc_emit_message_marked(struct gremlinc_writer *w,
 							     struct gremlinc_name_scope *scope,
-							     const struct gremlind_message *m,
+							     struct gremlind_message *m,
 							     size_t *decl_start,
 							     size_t *decl_end);
 

@@ -112,3 +112,17 @@ caller_iterate_all(const wp_All_reader *r)
 	}
 	return sum;
 }
+
+static const uint8_t caller_table[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+
+/*@ assigns \nothing;
+    ensures \result == 8;
+*/
+uint32_t
+caller_absent_values(void)
+{
+	int32_t n = wd_Defaults_reader_get_n(NULL);
+	size_t c = wp_All_reader_r_raw_count(NULL);
+
+	return caller_table[n] + (uint32_t)c;
+}
