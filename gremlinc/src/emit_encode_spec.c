@@ -625,15 +625,18 @@ emit_avoid(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
 	pr->name = claim(L, scope, x->tname, "_avoid_", ttag);
 	if (pr->name == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 
+	const char *ax = claim(L, scope, pr->name, "_ax", NULL);
+	if (ax == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+	F("/*@ axiomatic %s {\n", ax);
 	const char *tgt, *rest;
 	if (pr->t.msg >= 0) {
-		F("/*@ predicate %s{L}(%s *m, %s *p) =\n      ",
+		F("    predicate %s{L}(%s *m, %s *p) =\n      ",
 		  pr->name, x->tname, p->msgs[pr->t.msg].tname);
 		tgt = "p";
 		rest = ", p";
 		F("\\separated(p, m)");
 	} else {
-		F("/*@ predicate %s{L}(%s *m, %s *p, integer n) =\n      n <= 0 || (",
+		F("    predicate %s{L}(%s *m, %s *p, integer n) =\n      n <= 0 || (",
 		  pr->name, x->tname, pr->t.ctype);
 		tgt = "p + (0 .. n - 1)";
 		rest = ", p, n";
@@ -651,7 +654,7 @@ emit_avoid(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
 			if ((err = each_child(w, "m", f, p->msgs[f->child].tname, cn, rest))) return err;
 		}
 	}
-	F(pr->t.msg >= 0 ? ";\n*/\n\n" : ");\n*/\n\n");
+	F(pr->t.msg >= 0 ? ";\n  }\n*/\n\n" : ");\n  }\n*/\n\n");
 	return GREMLINP_OK;
 }
 
@@ -668,8 +671,10 @@ emit_navoid(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
 
 	const char *self = avoid_name(p, pr->t.msg, msg_target(pr->x));
 	if (self == NULL) return GREMLINP_ERROR_NULL_POINTER;
-	F("/*@ predicate %s{L}(%s *m, %s *t) =\n      %s(t, m)",
-	  pr->name, x->tname, t->tname, self);
+	const char *ax = claim(L, scope, pr->name, "_ax", NULL);
+	if (ax == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+	F("/*@ axiomatic %s {\n    predicate %s{L}(%s *m, %s *t) =\n      %s(t, m)",
+	  ax, pr->name, x->tname, t->tname, self);
 	for (size_t i = 0; i < x->nf; i++) {
 		const struct ep_field *f = &x->f[i];
 		if (is_array(f->kind)) {
@@ -683,7 +688,7 @@ emit_navoid(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
 			if ((err = each_child(w, "m", f, p->msgs[f->child].tname, cn, ", t"))) return err;
 		}
 	}
-	F(";\n*/\n\n");
+	F(";\n  }\n*/\n\n");
 	return GREMLINP_OK;
 }
 
@@ -727,8 +732,8 @@ elem_size(struct gremlind_arena *a, const struct ep_field *f, const char *ref)
 }
 
 static enum gremlinp_parsing_error
-emit_field_logic(struct gremlinc_writer *w, struct gremlinc_espec *sp,
-		 struct ep_field *f)
+emit_field_logic(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
+		 struct gremlinc_espec *sp, struct ep_field *f)
 {
 	enum gremlinp_parsing_error err;
 	struct gremlind_arena *a = sp->plan->arena;
@@ -736,12 +741,17 @@ emit_field_logic(struct gremlinc_writer *w, struct gremlinc_espec *sp,
 	const char *fn = f->fname;
 	const char *C = f->child >= 0 ? child_of(sp, f)->tname : NULL;
 	const char *Cts = f->child >= 0 ? child_of(sp, f)->tsize : NULL;
+	const char *ax = NULL;
+	if (f->kind == EK_REP_MSG || f->kind == EK_REP_BYTES || f->kind == EK_REP_VARINT) {
+		ax = claim(sp->plan->logic, scope, f->sum, "_ax", NULL);
+		if (ax == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+	}
 
 	switch (f->kind) {
 	case EK_REP_MSG:
-		F("/*@ logic integer %s{L}(%s *e) =\n"
+		F("/*@ axiomatic %s {\n    logic integer %s{L}(%s *e) =\n"
 		  "      e != \\null ? %u + varint_size(%s(e)) + %s(e) : %u;\n\n",
-		  f->term, C, f->tagb, Cts, Cts, f->tagb + 1);
+		  ax, f->term, C, f->tagb, Cts, Cts, f->tagb + 1);
 		F("    lemma %s{L1,L2}: \\forall %s *e;\n"
 		  "      (e != \\null ==> %s{L1,L2}(e)) ==> \\at(%s(e), L1) == \\at(%s(e), L2);\n\n",
 		  f->tframe, C, child_of(sp, f)->dsame, f->term, f->term);
@@ -753,31 +763,31 @@ emit_field_logic(struct gremlinc_writer *w, struct gremlinc_espec *sp,
 		  "      (\\forall integer k; 0 <= k < n ==>\n"
 		  "         \\at(m->%s[k], L1) == \\at(m->%s[k], L2) &&\n"
 		  "         \\at(%s((%s *)m->%s[k]), L1) == \\at(%s((%s *)m->%s[k]), L2)) ==>\n"
-		  "      \\at(%s(m, n), L1) == \\at(%s(m, n), L2);\n*/\n",
+		  "      \\at(%s(m, n), L1) == \\at(%s(m, n), L2);\n  }\n*/\n",
 		  f->frame, M, fn, fn, fn, fn, f->term, C, fn, f->term, C, fn, f->sum, f->sum);
 		break;
 	case EK_REP_BYTES:
-		F("/*@ logic integer %s{L}(%s *m, integer n) =\n"
+		F("/*@ axiomatic %s {\n    logic integer %s{L}(%s *m, integer n) =\n"
 		  "      n <= 0 ? 0 :\n"
 		  "      %s(m, n - 1) + %u + varint_size(m->%s[n - 1].len) + m->%s[n - 1].len;\n\n",
-		  f->sum, M, f->sum, f->tagb, fn, fn);
+		  ax, f->sum, M, f->sum, f->tagb, fn, fn);
 		F("    lemma %s{L1,L2}: \\forall %s *m, integer n; 0 <= n ==>\n"
 		  "      \\at(m->%s, L1) == \\at(m->%s, L2) ==>\n"
 		  "      (\\forall integer k; 0 <= k < n ==> \\at(m->%s[k].len, L1) == \\at(m->%s[k].len, L2)) ==>\n"
-		  "      \\at(%s(m, n), L1) == \\at(%s(m, n), L2);\n*/\n",
+		  "      \\at(%s(m, n), L1) == \\at(%s(m, n), L2);\n  }\n*/\n",
 		  f->frame, M, fn, fn, fn, fn, f->sum, f->sum);
 		break;
 	case EK_REP_VARINT: {
 		const char *ref = dup(a, "m->%s[n - 1]", fn);
 		const char *es = ref ? elem_size(a, f, ref) : NULL;
 		if (es == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
-		F("/*@ logic integer %s{L}(%s *m, integer n) =\n"
+		F("/*@ axiomatic %s {\n    logic integer %s{L}(%s *m, integer n) =\n"
 		  "      n <= 0 ? 0 : %s(m, n - 1) + %s;\n\n",
-		  f->sum, M, f->sum, es);
+		  ax, f->sum, M, f->sum, es);
 		F("    lemma %s{L1,L2}: \\forall %s *m, integer n; 0 <= n ==>\n"
 		  "      \\at(m->%s, L1) == \\at(m->%s, L2) ==>\n"
 		  "      (\\forall integer k; 0 <= k < n ==> \\at(m->%s[k], L1) == \\at(m->%s[k], L2)) ==>\n"
-		  "      \\at(%s(m, n), L1) == \\at(%s(m, n), L2);\n*/\n",
+		  "      \\at(%s(m, n), L1) == \\at(%s(m, n), L2);\n  }\n*/\n",
 		  f->frame, M, fn, fn, fn, fn, f->sum, f->sum);
 		break;
 	}
@@ -1153,10 +1163,14 @@ gremlinc_espec_emit_logic(struct gremlinc_writer *w, struct gremlinc_name_scope 
 
 	if ((err = emit_pairs(w, scope, sp->plan, sp->idx))) return err;
 	for (size_t i = 0; i < e->nf; i++) {
-		if ((err = emit_field_logic(w, sp, &e->f[i]))) return err;
+		if ((err = emit_field_logic(w, scope, sp, &e->f[i]))) return err;
 	}
 
-	F("/*@\n");
+	/* One axiomatic per block: WP then hands a goal only the lemmas of the
+	 * symbols it uses, not every lemma above it in the file. */
+	const char *ax = claim(sp->plan->logic, scope, e->tsize, "_ax", NULL);
+	if (ax == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+	F("/*@ axiomatic %s {\n", ax);
 	for (size_t i = 0; i < e->nf; i++) {
 		if ((err = emit_field_size(w, sp, &e->f[i]))) return err;
 	}
@@ -1214,7 +1228,7 @@ gremlinc_espec_emit_logic(struct gremlinc_writer *w, struct gremlinc_name_scope 
 	  "      %s{L1,L2}(m) ==> %s{L2,L3}(m) ==> %s{L1,L3}(m);\n\n",
 	  e->dsame_trans, M, e->dsame, e->dsame, e->dsame);
 	F("    lemma %s{L}: \\forall %s *m, uint8_t *b, integer lo, hi, lo2, hi2;\n"
-	  "      lo <= lo2 ==> hi2 <= hi ==> %s(m, b, lo, hi) ==> %s(m, b, lo2, hi2);\n*/\n\n",
+	  "      lo <= lo2 ==> hi2 <= hi ==> %s(m, b, lo, hi) ==> %s(m, b, lo2, hi2);\n  }\n*/\n\n",
 	  e->bufsep_sub, M, e->bufsep, e->bufsep);
 
 	return emit_ghosts(w, sp);
