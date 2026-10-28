@@ -26,10 +26,12 @@ enum ek {
 /* Measured on an M3 Pro at 4 provers, 120 s per goal. The heaviest message
  * proved, normfs's ServerResponse, has weight 21 and cost 420. A loop over a
  * repeated message carries the whole message: cost 24 proves, cost 32 has
- * goals of 75 to 180 s. */
+ * goals of 75 to 180 s. Field count: 16 int32 fields prove, the slowest
+ * goal at 20 s, and 24 time out in _size; 17 to 23 were not measured. */
 #define WEIGHT_MAX	21
 #define COST_MAX	420
 #define REP_COST_MAX	24
+#define FIELDS_MAX	16
 #define FILE_MAX	65536
 
 struct ep_field {
@@ -413,6 +415,7 @@ gremlinc_encode_plan_build(struct gremlind_arena *arena,
 		/* The frame asserts grow with slots times subtree size; past this the
 		 * message is left without contracts, like any unsupported one. */
 		if (rep_slot && cost > REP_COST_MAX) e->ok = false;
+		if (e->nf > FIELDS_MAX) e->ok = false;
 		if (e->weight > WEIGHT_MAX || cost > COST_MAX || total + cost > FILE_MAX) e->ok = false;
 		else if (e->ok) total += cost;
 	}
