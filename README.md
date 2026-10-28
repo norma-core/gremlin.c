@@ -71,7 +71,7 @@ cmake --build build-it --target verify-generated verify-generated-write
 ```
 
 The read-side fixture has one field of every family, and callers built
-on its readers: `8293 / 8293` WP obligations.
+on its readers: `8314 / 8314` WP obligations.
 
 `verify-generated-write` proves that `_size` returns the message's
 logic size and that `_encode_at` writes only `[off, off + _size)` and

@@ -169,7 +169,8 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	W("\tit.count_remaining = r->"); W(fname); W("_count;\n");
 	W("\treturn it;\n}\n\n");
 
-	/* next: decode current bytes, init child reader, advance */
+	/* next: decode current bytes, advance, then init the child reader. Init
+	 * goes last so its reader_ok needs no frame through the scan loop. */
 	if ((err = gremlinc_emit_iter_next_spec(w, iter_ok, NULL,
 	    f->type.u.message)) != GREMLINP_OK) return err;
 	W("static inline enum gremlin_error\n");
@@ -183,9 +184,6 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	  "\tif (d.error != GREMLIN_OK) return d.error;\n"
 	  "\tit->offset += d.consumed;\n"
 	  "\tit->count_remaining--;\n");
-	W("\tenum gremlin_error _ie = "); W(tname);
-	W("_reader_init(out, d.bytes.data, d.bytes.len);\n"
-	  "\tif (_ie != GREMLIN_OK) return _ie;\n");
 	if ((err = gremlinc_emit_iter_scan_spec(w, "\t", false)) != GREMLINP_OK) return err;
 	W("\twhile (it->count_remaining > 0 && it->offset < it->src_len) {\n");
 	W("\t\tstruct gremlin_varint32_decode_result t =\n"
@@ -200,6 +198,6 @@ gremlinc_repeated_msg_emit_getter(struct gremlinc_writer *w,
 	  "\t\t\t                  (enum gremlin_wire_type)_wt);\n"
 	  "\t\tif (sk.error != GREMLIN_OK) return sk.error;\n"
 	  "\t\tit->offset += sk.consumed;\n\t}\n");
-	W("\treturn GREMLIN_OK;\n}\n\n");
+	W("\treturn "); W(tname); W("_reader_init(out, d.bytes.data, d.bytes.len);\n}\n\n");
 	return GREMLINP_OK;
 }
