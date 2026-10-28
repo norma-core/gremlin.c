@@ -86,8 +86,10 @@ if(_nproc EQUAL 0 OR _nproc GREATER 4)
     set(_nproc 4)
 endif()
 
+# A proto float default can be inf or nan, and the wire carries them too.
 set(_common
     -machdep gcc_x86_64
+    -warn-special-float none
     -keep-unused-functions all
     -wp -wp-timeout 120
     -wp-split
