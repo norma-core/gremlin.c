@@ -108,6 +108,38 @@ static TEST(iter_predicate_does_not_take_a_getter_name)
 	gremlind_arena_free_malloc(&arena);
 }
 
+/* A field named _size is renamed, not emitted next to the cached size. */
+static TEST(field_does_not_take_the_cached_size_name)
+{
+	char src[] =
+		"syntax = \"proto3\";\n"
+		"message R { int32 x = 1; int32 _size = 2; }\n";
+	struct gremlind_arena arena;
+	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
+	struct gremlind_source gs;
+	struct gremlind_file *file = build(&arena, &gs, src);
+	ASSERT_NOT_NULL(file);
+
+	struct gremlinc_name_scope s, logic;
+	gremlinc_name_scope_init(&s, &arena);
+	gremlinc_name_scope_init(&logic, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
+	struct gremlinc_name_scope reserved = s;
+	ASSERT_EQ(GREMLINP_OK, gremlinc_reserve_public_names(&reserved, file));
+	struct gremlind_message *m = &file->messages.items[0];
+	struct gremlinc_encode_plan *plan;
+	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, &reserved, &m, 1, &plan));
+	struct gremlinc_writer w;
+	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 8192));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, &reserved, m, plan));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
+	ASSERT_NOT_NULL(strstr(w.buf, "\tint32_t\t_size_1;"));
+	ASSERT_NOT_NULL(strstr(w.buf, "\tsize_t\t_size;"));
+	ASSERT_NULL(strstr(w.buf, "\tint32_t\t_size;"));
+	gremlinc_writer_dispose(&w);
+	gremlind_arena_free_malloc(&arena);
+}
+
 /* Imported enum values keep the names they had before contracts, whichever
  * file is emitted first: plain, and pushed to _1 by a type of the same name. */
 static TEST(predicate_does_not_take_an_imported_enum_value_name)
@@ -390,6 +422,7 @@ void message_test(void)
 	RUN_TEST(emit_message_from_a_garbage_arena);
 	RUN_TEST(predicate_does_not_take_an_enum_value_name);
 	RUN_TEST(iter_predicate_does_not_take_a_getter_name);
+	RUN_TEST(field_does_not_take_the_cached_size_name);
 	RUN_TEST(predicate_does_not_take_an_imported_enum_value_name);
 	RUN_TEST(ghost_does_not_take_a_later_getter_name);
 	RUN_TEST(lemma_names_are_unique_across_files);
