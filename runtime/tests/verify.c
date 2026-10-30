@@ -40,6 +40,7 @@ main(void)
 	/* bytes encode / decode */
 	gremlin_write_bytes(&w, buf, 0);
 	volatile size_t   bc = gremlin_bytes_decode(buf, sizeof buf).consumed;
+	volatile size_t   bca = gremlin_bytes_decode_at(buf, 0, sizeof buf).consumed;
 
 	/* _at variants — keep WP seeing them so their bodies are verified. */
 	volatile size_t ao1 = gremlin_varint_encode_at(buf, 0, 0);
@@ -62,7 +63,7 @@ main(void)
 	volatile double   fv64 = gremlin_f64_from_bits(0ull);
 
 	(void)z;  (void)d;  (void)d4; (void)d8; (void)ds;
-	(void)vz32; (void)vd32; (void)bc;
+	(void)vz32; (void)vd32; (void)bc; (void)bca;
 	(void)zz32; (void)uz32; (void)zz64; (void)uz64;
 	(void)fb32; (void)fv32; (void)fb64; (void)fv64;
 	return 0;

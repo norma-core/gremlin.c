@@ -47,7 +47,7 @@ if(CALLERS)
     endforeach()
 endif()
 list(APPEND _fcts
-    gremlin_varint32_decode gremlin_varint_decode gremlin_bytes_decode
+    gremlin_varint32_decode gremlin_varint_decode gremlin_bytes_decode gremlin_bytes_decode_at
     gremlin_skip_data gremlin_fixed32_decode gremlin_fixed64_decode
     gremlin_unzigzag32 gremlin_unzigzag64 gremlin_f32_from_bits
     gremlin_f64_from_bits)

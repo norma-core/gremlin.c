@@ -962,10 +962,11 @@ struct gremlin_bytes_decode_result {
 };
 
 /*@ // b lies inside src[0 .. n): what generated readers promise about every
-    // bytes, string and message span they keep.
+    // bytes, string and message span they keep, stated on the two members.
+    predicate gremlin_span_at(uint8_t *p, integer l, uint8_t *src, integer n) =
+      \base_addr(p) == \base_addr(src) && src <= p && p + l <= src + n;
     predicate gremlin_span_in(struct gremlin_bytes b, uint8_t *src, integer n) =
-      \base_addr(b.data) == \base_addr(src) &&
-      src <= b.data && b.data + b.len <= src + n;
+      gremlin_span_at((uint8_t *)b.data, b.len, src, n);
 */
 
 /*@ requires len == 0 || \valid_read(buf + (0 .. len - 1));
@@ -1006,6 +1007,27 @@ gremlin_bytes_decode(const uint8_t *buf, size_t len)
 	r.bytes.len = (size_t)d.value;
 	r.consumed = d.consumed + (size_t)d.value;
 	return r;
+}
+
+/*@ // The span relative to src, proved once here instead of in every arm
+    // of a reader loop.
+    requires off <= len;
+    requires len == 0 || \valid_read(src + (0 .. len - 1));
+    assigns  \nothing;
+    ensures  \result.error == GREMLIN_OK ||
+             \result.error == GREMLIN_ERROR_TRUNCATED ||
+             \result.error == GREMLIN_ERROR_OVERFLOW;
+    ensures  \result.error == GREMLIN_OK ==>
+               0 < \result.consumed <= len - off &&
+               gremlin_span_at((uint8_t *)\result.bytes.data, \result.bytes.len,
+                               (uint8_t *)src, len);
+*/
+static inline __attribute__((always_inline)) struct gremlin_bytes_decode_result
+gremlin_bytes_decode_at(const uint8_t *src, size_t off, size_t len)
+{
+	/* src may be NULL when len is 0, and NULL + 0 is undefined. */
+	if (off == len) return gremlin_bytes_decode(src, 0);
+	return gremlin_bytes_decode(src + off, len - off);
 }
 
 /* ========================================================================
