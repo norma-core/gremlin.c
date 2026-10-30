@@ -124,10 +124,14 @@ gremlinc_bytes_emit_reader_arm(struct gremlinc_writer *w,
 	W("\t\tif (t.value == "); WI(packed_tag);
 	W("u /* field "); WI(f->parsed.index); W(", GREMLIN_WIRE_LEN_PREFIX */) {\n");
 	W("\t\t\tstruct gremlin_bytes_decode_result d =\n"
-	  "\t\t\t\tgremlin_bytes_decode(src + offset, len - offset);\n"
+	  "\t\t\t\tgremlin_bytes_decode_at(src, offset, len);\n"
 	  "\t\t\tif (d.error != GREMLIN_OK) return d.error;\n"
-	  "\t\t\toffset += d.consumed;\n"
-	  "\t\t\tr->"); W(fname); W(" = d.bytes;\n");
+	  "\t\t\toffset += d.consumed;\n");
+	/* Field by field: a struct store makes WP frame every other span through it. */
+	W("\t\t\tr->"); W(fname); W(".data = d.bytes.data;\n"
+	  "\t\t\tr->"); W(fname); W(".len = d.bytes.len;\n"
+	  "\t\t\t/*@ assert gremlin_span_at((uint8_t *)r->"); W(fname); W(".data, r->");
+	W(fname); W(".len, (uint8_t *)src, len); */\n");
 	W("\t\t\tr->_has."); W(fname); W(" = 1;\n");
 	W("\t\t\tcontinue;\n\t\t}\n");
 	return GREMLINP_OK;
