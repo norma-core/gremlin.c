@@ -843,16 +843,19 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	 * populated from wire data. */
 	W("\t*r = ("); W(reader_ty); W("){ .src = src, .src_len = len };\n");
 	W("\tsize_t offset = 0;\n");
-	W("\t/*@ loop invariant 0 <= offset <= len;\n"
-	  "\t    loop invariant r->src == src && r->src_len == len;\n");
+	/* Named so -wp-prop can prove a wide loop one invariant at a time. */
+	W("\t/*@ loop invariant offset_in: 0 <= offset <= len;\n"
+	  "\t    loop invariant src_kept: r->src == src && r->src_len == len;\n");
 	for (size_t g = 0; g < ngroups; g++) {
-		W("\t    loop invariant "); W(spans_preds[g]); W("(r, (uint8_t *)src, len);\n");
+		W("\t    loop invariant "); W(spans_preds[g]); W(": ");
+		W(spans_preds[g]); W("(r, (uint8_t *)src, len);\n");
 	}
 	/* Each element takes at least one byte. One invariant per count:
 	 * folded into one predicate they stalled the provers. */
 	for (size_t i = 0; i < m->fields.count; i++) {
 		if (!field_has_count(&m->fields.items[i])) continue;
-		W("\t    loop invariant r->"); W(fnames[i]); W("_count <= offset && (r->");
+		W("\t    loop invariant count_"); W(fnames[i]); W(": r->");
+		W(fnames[i]); W("_count <= offset && (r->");
 		W(fnames[i]); W("_count > 0 ==> r->"); W(fnames[i]); W("_first_offset < offset);\n");
 	}
 	W("\t    loop assigns offset, *r;\n"
