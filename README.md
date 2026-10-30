@@ -46,7 +46,7 @@ runs Frama-C WP over [`runtime/include/gremlin.h`](runtime/include/gremlin.h)
 through [`runtime/tests/verify.c`](runtime/tests/verify.c), which
 references the static-inline functions so WP checks their bodies.
 
-Current runtime proof: `724 / 724` WP obligations. The exact function
+Current runtime proof: `743 / 743` WP obligations. The exact function
 set is `RUNTIME_WP_FCTS` in [`runtime/CMakeLists.txt`](runtime/CMakeLists.txt):
 writer setup, varint/fixed size helpers, `_encode_at` writers,
 varint/fixed/bytes decoders, `gremlin_skip_data`, zigzag conversions,
