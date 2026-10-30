@@ -84,3 +84,25 @@ message Wide {
 message HasWide {
     map<string, Wide> mw = 1;
 }
+
+// More spans than one predicate holds, so reader_init carries several groups.
+message ManySpans {
+    string s1 = 1;
+    string s2 = 2;
+    string s3 = 3;
+    string s4 = 4;
+    string s5 = 5;
+    string s6 = 6;
+    string s7 = 7;
+    string s8 = 8;
+    bytes b9 = 9;
+    bytes b10 = 10;
+    bytes b11 = 11;
+    bytes b12 = 12;
+    Inner m13 = 13;
+    Inner m14 = 14;
+    Inner m15 = 15;
+    Inner m16 = 16;
+    Inner m17 = 17;
+    repeated string rs = 18;
+}
