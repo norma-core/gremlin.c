@@ -1942,6 +1942,9 @@ gremlinc_espec_encode_field_before(struct gremlinc_writer *w, const struct greml
 	enum gremlinp_parsing_error err;
 	if (sp == NULL) return GREMLINP_OK;
 	const struct ep_field *f = &sp->e->f[fi];
+	/* Frames m one field at a time; on wide messages the last calls timed out
+	 * reaching back through every earlier write. */
+	if (fi > 0) F("\t/*@ assert %s{Pre,Here}(m); */\n", sp->e->own);
 	if (f->kind == EK_MSG || f->kind == EK_REP_VARINT) return encode_room(w, sp, fi);
 	F("\t/*@ assert _off + \\at(%s(m), Pre) <= \\at(_off, Pre) + \\at(m->_size, Pre); */\n", f->t);
 	if (f->kind != EK_REP_MSG && f->kind != EK_REP_BYTES) return GREMLINP_OK;
