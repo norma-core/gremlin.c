@@ -74,9 +74,11 @@ if(_nproc EQUAL 0)
 endif()
 
 file(REMOVE "${REPORT}")
+# A proto float default can be inf or nan, and the wire carries them too.
 execute_process(
     COMMAND ${FRAMAC}
         -machdep gcc_x86_64
+        -warn-special-float none
         -keep-unused-functions all
         -wp -wp-rte -wp-timeout 120
         -wp-split
