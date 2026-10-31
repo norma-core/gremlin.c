@@ -348,7 +348,8 @@ gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 		gremlinc_name_scope_init(&members, a);
 		if (gremlinc_name_scope_mangle(&members, "src", 3) == NULL ||
 		    gremlinc_name_scope_mangle(&members, "src_len", 7) == NULL ||
-		    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL)
+		    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL ||
+		    gremlinc_name_scope_mangle(&members, "_size", 5) == NULL)
 			return GREMLINP_ERROR_OUT_OF_MEMORY;
 		const char *reader;
 		if (claim_join2(reserved, m->c_name, "_size") == NULL ||
@@ -471,14 +472,15 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	/* Kept for the contracts of messages that hold this one. */
 	m->c_reader_ok = reader_ok;
 
-	/* Per-message member scope. Pre-register the reader struct's
-	 * housekeeping fields so a proto field named "src" or "src_len"
-	 * gets mangled instead of duplicate-struct-member'ing. */
+	/* Per-message member scope. Pre-register the structs'
+	 * housekeeping fields so a proto field named "src", "src_len" or
+	 * "_size" gets mangled instead of duplicate-struct-member'ing. */
 	struct gremlinc_name_scope members;
 	gremlinc_name_scope_init(&members, scope->arena);
 	if (gremlinc_name_scope_mangle(&members, "src", 3) == NULL ||
 	    gremlinc_name_scope_mangle(&members, "src_len", 7) == NULL ||
-	    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL) {
+	    gremlinc_name_scope_mangle(&members, "_has", 4) == NULL ||
+	    gremlinc_name_scope_mangle(&members, "_size", 5) == NULL) {
 		return GREMLINP_ERROR_OUT_OF_MEMORY;
 	}
 
