@@ -1,6 +1,7 @@
-# Proves the write side of a generated header: every _size and _cached_size it
-# defines, the ghost helpers their proofs call, and the lemmas. Lemmas go in a
-# second run: their induction needs the tip prover.
+# Proves the write side of a generated header: every _size, _encode_at, _encode
+# and _cached_size it defines, the ghost helpers their proofs call, callers
+# built on them, and the lemmas. Lemmas go in a second run: their induction
+# needs the tip prover.
 #
 #   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>] -P verify_writer.cmake
 
@@ -8,8 +9,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Messages with write-side contracts are the ones that got ghost helpers. Their
-# _size and _cached_size, the two that take only the message, are found by the
-# type they take, whatever suffix they were given.
+# writer functions are found by the type they take, whatever they were named.
 file(STRINGS "${HEADER}" _ghosts REGEX "^  void [A-Za-z_][A-Za-z0-9_]*\\(")
 set(_fcts)
 set(_types)
@@ -18,8 +18,6 @@ foreach(_line IN LISTS _ghosts)
     if(_m)
         list(APPEND _fcts ${CMAKE_MATCH_1})
         list(APPEND _types ${CMAKE_MATCH_2})
-    elseif(_line MATCHES "^  void ([A-Za-z_][A-Za-z0-9_]*)\\(void\\)")
-        list(APPEND _fcts ${CMAKE_MATCH_1})
     else()
         message(FATAL_ERROR "unexpected ghost: ${_line}")
     endif()
@@ -41,13 +39,14 @@ file(STRINGS "${HEADER}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*\\(")
 foreach(_t IN LISTS _types)
     set(_n 0)
     foreach(_line IN LISTS _defs)
-        if(_line MATCHES "^([A-Za-z_][A-Za-z0-9_]*)\\(const ${_t} \\*m\\)")
+        if(_line MATCHES "^([A-Za-z_][A-Za-z0-9_]*)\\(const ${_t} \\*m[,)]")
             list(APPEND _fcts ${CMAKE_MATCH_1})
             math(EXPR _n "${_n} + 1")
         endif()
     endforeach()
-    if(NOT _n EQUAL 2)
-        message(FATAL_ERROR "${_t}: ${_n} of _size and _cached_size found, expected 2")
+    # _size, _encode_at, _encode and _cached_size.
+    if(NOT _n EQUAL 4)
+        message(FATAL_ERROR "${_t}: ${_n} writer functions, expected 4")
     endif()
 endforeach()
 if(NOT _fcts)
@@ -85,8 +84,10 @@ if(_nproc EQUAL 0 OR _nproc GREATER 4)
     set(_nproc 4)
 endif()
 
+# A proto float default can be inf or nan, and the wire carries them too.
 set(_common
     -machdep gcc_x86_64
+    -warn-special-float none
     -keep-unused-functions all
     -wp -wp-timeout 120
     -wp-split

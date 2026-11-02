@@ -383,6 +383,45 @@ static TEST(heavy_repeated_message_gets_no_write_contracts)
 	gremlind_arena_free_malloc(&arena);
 }
 
+/* A message wider than _size proves in time stays out, and so does its parent. */
+static TEST(wide_message_gets_no_write_contracts)
+{
+	char src[1024];
+	size_t n = (size_t)snprintf(src, sizeof src, "syntax = \"proto3\";\nmessage Narrow {");
+	for (int i = 1; i <= 16 && n < sizeof src; i++)
+		n += (size_t)snprintf(src + n, sizeof src - n, " int32 f%d = %d;", i, i);
+	if (n < sizeof src) n += (size_t)snprintf(src + n, sizeof src - n, " }\nmessage Wide {");
+	for (int i = 1; i <= 17 && n < sizeof src; i++)
+		n += (size_t)snprintf(src + n, sizeof src - n, " int32 f%d = %d;", i, i);
+	if (n < sizeof src)
+		n += (size_t)snprintf(src + n, sizeof src - n, " }\nmessage Holder { Wide w = 1; }\n");
+	ASSERT_TRUE(n < sizeof src);
+	struct gremlind_arena arena;
+	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
+	struct gremlind_source gs;
+	struct gremlind_file *file = build(&arena, &gs, src);
+	ASSERT_NOT_NULL(file);
+
+	struct gremlinc_name_scope s, logic;
+	gremlinc_name_scope_init(&s, &arena);
+	gremlinc_name_scope_init(&logic, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
+	struct gremlind_message *order[3];
+	for (size_t i = 0; i < 3; i++) order[i] = &file->messages.items[i];
+	struct gremlinc_encode_plan *plan;
+	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 3, &plan));
+	struct gremlinc_writer w;
+	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 8192));
+	for (size_t i = 0; i < 3; i++)
+		ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, NULL, order[i], plan));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
+	ASSERT_NOT_NULL(strstr(w.buf, "void Narrow_tsize_nonneg(Narrow *m)"));
+	ASSERT_NULL(strstr(w.buf, "Wide_tsize_nonneg"));
+	ASSERT_NULL(strstr(w.buf, "Holder_tsize_nonneg"));
+	gremlinc_writer_dispose(&w);
+	gremlind_arena_free_malloc(&arena);
+}
+
 void message_test(void);
 
 void message_test(void)
@@ -397,4 +436,5 @@ void message_test(void)
 	RUN_TEST(reserved_getters_follow_emission_order);
 	RUN_TEST(repeated_element_with_children_gets_no_write_contracts);
 	RUN_TEST(heavy_repeated_message_gets_no_write_contracts);
+	RUN_TEST(wide_message_gets_no_write_contracts);
 }

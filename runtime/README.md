@@ -169,7 +169,9 @@ mismatch.
 The memcpy fast path would need a libc-stub contract WP doesn't
 reliably supply; we ship a byte-loop fallback and WP proves memory
 safety. Byte content equality is documented inline in the contract
-as a trust-base claim.
+as a trust-base claim. Like memcpy, `write_bytes` requires `src`
+not to overlap the bytes it writes; `write_bytes_at` says the same
+through `restrict`.
 
 These admitted facts are small, local, and orthogonal to the
 protobuf semantics; they don't hide bugs in the primitives.

@@ -58,10 +58,33 @@ Run from the build directory:
 cmake --build . --target verify-runtime
 ```
 
-Generated readers carry contracts too: `verify-generated` in
-[`integration-test`](integration-test/CMakeLists.txt) proves every reader
-function of a fixture with one field of every family, and callers built
-on them: `8293 / 8293` WP obligations.
+Generated code is proved in `integration-test`, on fixtures generated
+at build time: `verify-generated` covers the read side and
+`verify-generated-write` the write side (`_size`, `_encode_at`,
+`_encode`, `_cached_size`, their ghost helpers and lemmas). Both take
+the function list from the generated header and need CMake 3.19 or
+newer:
+
+```bash
+cmake -S integration-test -B build-it
+cmake --build build-it --target verify-generated verify-generated-write
+```
+
+The read-side fixture has one field of every family, and callers built
+on its readers: `8314 / 8314` WP obligations.
+
+`verify-generated-write` proves that `_size` returns the message's
+logic size and that `_encode_at` writes only `[off, off + _size)` and
+returns its end, together with callers that build and encode messages.
+Which bytes `_encode_at` writes is not proved. It covers messages built
+from varint and fixed scalars other than `sint`, `float`, `double` and
+a singular `bool`, bytes and strings without a `[default]`, enums, and
+non-recursive message fields of the same file. A repeated message field
+must be the message's only message field, and its element type holds no
+message field. Messages past a size limit, set to what proves within
+the timeout, and all others are generated as before, without write-side
+contracts. Headers included together should come from one `gremlinc-gen`
+run, which keeps their logic names apart.
 
 The repository also contains other proofs, such as descriptor arena
 allocation and selected code-generator helpers. Parser proofs are useful
