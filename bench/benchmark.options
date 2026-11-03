@@ -1,0 +1,14 @@
+# Strings and scalar arrays inline, as nanopb is used on a device; repeated
+# messages through pointers, or a static DeepNested would take ~100 KiB.
+benchmark.DeepNested.root_name max_size:64
+benchmark.DeepNested.tags max_count:8 max_size:16
+benchmark.DeepNested.items type:FT_POINTER
+benchmark.Level1.title max_size:32
+benchmark.Level1.items type:FT_POINTER
+benchmark.Level2.description max_size:64
+benchmark.Level2.payload max_size:128
+benchmark.Level2.items type:FT_POINTER
+benchmark.Level3.name max_size:32
+benchmark.Level3.items type:FT_POINTER
+benchmark.Level4.data max_size:32
+benchmark.Level4.numbers max_count:16
