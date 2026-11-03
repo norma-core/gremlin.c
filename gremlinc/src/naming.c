@@ -223,6 +223,22 @@ gremlinc_name_scope_mangle(struct gremlinc_name_scope *s,
 	return NULL;	/* absurdly saturated — a million collisions */
 }
 
+static bool
+in_runtime_namespace(const char *name)
+{
+	if (strncmp(name, "gremlin", 7) != 0 && strncmp(name, "GREMLIN", 7) != 0) return false;
+	return name[7] == '\0' || name[7] == '_';
+}
+
+static bool
+has_number_segment(const char *name)
+{
+	for (const char *p = strchr(name, '_'); p != NULL; p = strchr(p + 1, '_')) {
+		if (p[1] >= '0' && p[1] <= '9') return true;
+	}
+	return false;
+}
+
 const char *
 gremlinc_cname_for_type(struct gremlinc_name_scope *s,
 			const struct gremlind_scoped_name *sn)
@@ -245,7 +261,12 @@ gremlinc_cname_for_type(struct gremlinc_name_scope *s,
 	}
 	raw[off] = '\0';
 
-	return gremlinc_name_scope_mangle(s, raw, off);
+	/* gremlin_ and GREMLIN_ belong to the runtime, and a type's derived names extend
+	 * its own, so such a type moves to name_N: no gremlin_ name in gremlin.h has a _N segment. */
+	const char *c = gremlinc_name_scope_mangle(s, raw, off);
+	while (c != NULL && in_runtime_namespace(c) && !has_number_segment(c))
+		c = gremlinc_name_scope_mangle(s, raw, off);
+	return c;
 }
 
 enum gremlinp_parsing_error
