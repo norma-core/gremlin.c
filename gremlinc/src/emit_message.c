@@ -433,7 +433,6 @@ gremlinc_emit_message_forward(struct gremlinc_writer *w,
 	 * definition yet. */
 	W("typedef struct "); W(tname); W(" "); W(tname); W(";\n");
 	W("typedef struct "); W(tname); W("_reader "); W(tname); W("_reader;\n");
-	((struct gremlind_message *)m)->c_predeclared = true;
 
 	/* Function forward decls — size / encode / reader_init.  Bodies
 	 * are `static inline`; the compiler accepts a forward decl without

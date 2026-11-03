@@ -147,14 +147,11 @@ span_is(const char *start, size_t len, const char *word)
 	return len == strlen(word) && memcmp(start, word, len) == 0;
 }
 
-/* -1, or 0 / 1 for an option named `name` whose value is `no` / `yes`. */
+/* -1, or 0 / 1 for a value that is `no` / `yes`. */
 static int
-packed_value(const char *name_start, size_t name_length,
-	     const struct gremlinp_const_parse_result *v,
-	     const char *name, const char *yes, const char *no)
+packed_value(const struct gremlinp_const_parse_result *v, const char *yes, const char *no)
 {
-	if (!span_is(name_start, name_length, name) || v->kind != GREMLINP_CONST_IDENTIFIER)
-		return -1;
+	if (v->kind != GREMLINP_CONST_IDENTIFIER) return -1;
 	if (span_is(v->u.span.start, v->u.span.length, yes)) return 1;
 	if (span_is(v->u.span.start, v->u.span.length, no)) return 0;
 	return -1;
@@ -163,8 +160,9 @@ packed_value(const char *name_start, size_t name_length,
 static int
 feature_packed(const struct gremlinp_option_parse_result *o)
 {
-	return packed_value(o->name_start, o->name_length, &o->value,
-			    "features.repeated_field_encoding", "PACKED", "EXPANDED");
+	if (!span_is(o->name_start, o->name_length, "features.repeated_field_encoding"))
+		return -1;
+	return packed_value(&o->value, "PACKED", "EXPANDED");
 }
 
 int
@@ -173,9 +171,9 @@ gremlind_field_packed_option(const struct gremlinp_parser_buffer *buf,
 {
 	struct gremlinp_const_parse_result v;
 	if (extract_option(buf, opts, "packed", &v))
-		return packed_value("packed", 6, &v, "packed", "true", "false");
+		return packed_value(&v, "true", "false");
 	if (extract_option(buf, opts, "features.repeated_field_encoding", &v))
-		return packed_value("f", 1, &v, "f", "PACKED", "EXPANDED");
+		return packed_value(&v, "PACKED", "EXPANDED");
 	return -1;
 }
 

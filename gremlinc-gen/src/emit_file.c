@@ -209,6 +209,7 @@ emit_file(struct gremlind_arena *arena,
 	if (err != GREMLINP_OK) goto out;
 
 	for (size_t i = 0; i < order.predeclare_count; i++) {
+		order.predeclare[i]->c_predeclared = true;
 		err = gremlinc_emit_message_forward(w, order.predeclare[i]);
 		if (err != GREMLINP_OK) goto out;
 	}
