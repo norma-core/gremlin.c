@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 
 #include "tests.h"
@@ -346,6 +347,48 @@ static TEST(reserved_getters_follow_emission_order)
 	gremlind_arena_free_malloc(&arena);
 }
 
+/* A type's own name and every name derived from it stay out of gremlin.h's. */
+static TEST(type_in_the_runtime_namespace_gets_a_suffix)
+{
+	char src[] =
+		"syntax = \"proto3\";\n"
+		"message gremlin_bytes_decode_at { uint32 x = 1; }\n"
+		"message gremlin_varint { uint32 x = 1; }\n"
+		"enum GREMLIN { OK = 0; }\n";
+	struct gremlind_arena arena;
+	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
+	struct gremlind_source gs;
+	struct gremlind_file *file = build(&arena, &gs, src);
+	ASSERT_NOT_NULL(file);
+
+	struct gremlinc_name_scope s;
+	gremlinc_name_scope_init(&s, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
+	ASSERT_STR_EQ("gremlin_bytes_decode_at_1", file->messages.items[0].c_name);
+	ASSERT_STR_EQ("gremlin_varint_1", file->messages.items[1].c_name);
+	ASSERT_STR_EQ("GREMLIN_1", file->enums.items[0].c_name);
+
+	/* The suffix only works while no gremlin_ or GREMLIN_ name in gremlin.h has a _N segment. */
+	FILE *h = fopen(GREMLIN_H_PATH, "rb");
+	ASSERT_NOT_NULL(h);
+	static char hdr[256 * 1024];
+	size_t n = fread(hdr, 1, sizeof hdr - 1, h);
+	ASSERT_TRUE(feof(h));
+	fclose(h);
+	hdr[n] = '\0';
+	for (size_t i = 0; i < n; i++) {
+		if (!isalpha((unsigned char)hdr[i]) && hdr[i] != '_') continue;
+		size_t j = i;
+		while (j < n && (isalnum((unsigned char)hdr[j]) || hdr[j] == '_')) j++;
+		if (strncmp(hdr + i, "gremlin_", 8) == 0 || strncmp(hdr + i, "GREMLIN_", 8) == 0) {
+			for (size_t k = i; k + 1 < j; k++)
+				ASSERT_FALSE(hdr[k] == '_' && isdigit((unsigned char)hdr[k + 1]));
+		}
+		i = j;
+	}
+	gremlind_arena_free_malloc(&arena);
+}
+
 /* _size over elements that hold messages of their own does not prove within the
  * timeout, so such a repeated field leaves its message without contracts. */
 static TEST(repeated_element_with_children_gets_no_write_contracts)
@@ -467,6 +510,7 @@ void message_test(void)
 	RUN_TEST(lemma_names_are_unique_across_files);
 	RUN_TEST(type_named_like_an_annotation_variable_gets_a_suffix);
 	RUN_TEST(reserved_getters_follow_emission_order);
+	RUN_TEST(type_in_the_runtime_namespace_gets_a_suffix);
 	RUN_TEST(repeated_element_with_children_gets_no_write_contracts);
 	RUN_TEST(heavy_repeated_message_gets_no_write_contracts);
 	RUN_TEST(wide_message_gets_no_write_contracts);

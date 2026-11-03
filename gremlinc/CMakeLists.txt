@@ -69,6 +69,9 @@ target_include_directories(gremlinc_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/tests
 )
 
+target_compile_definitions(gremlinc_tests PRIVATE
+    GREMLIN_H_PATH="${RUNTIME_DIR}/include/gremlin.h")
+
 add_test(NAME gremlinc_tests COMMAND gremlinc_tests)
 
 # -------------------------------------------------------------------------
