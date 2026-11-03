@@ -102,6 +102,12 @@ bench_golden(const char *data, size_t len, size_t n)
 			exit(1);
 		}
 	}
+	size_t nrep;
+	protobuf_unittest_TestAllTypes_repeated_nested_message(msg, &nrep);
+	if (nrep < 2) {
+		fprintf(stderr, "upb: golden_message has under two repeated_nested_message\n");
+		exit(1);
+	}
 
 	BENCH("golden", "marshal", n, WITH_ARENA(a, {
 		int32_t i = (int32_t)(bench_i & 1023);
@@ -156,5 +162,7 @@ main(int argc, char **argv)
 	uint8_t *golden = bench_load(argv[3], &golden_len);
 	bench_deep((const char *)deep, deep_len, n);
 	bench_golden((const char *)golden, golden_len, n);
+	free(deep);
+	free(golden);
 	return 0;
 }

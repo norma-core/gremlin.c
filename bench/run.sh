@@ -22,6 +22,8 @@ ZIG=${ZIG:-zig}
 cmake -S "$ROOT/bench" -B "$B" -DCMAKE_BUILD_TYPE=Release >"$B/configure.log" 2>&1 ||
 	{ cat "$B/configure.log" >&2; exit 1; }
 grep "not found, skipped" "$B/configure.log" >&2 || :
+# A library no longer found must not leave its old program behind.
+rm -f "$B/bench_cpp" "$B/bench_upb" "$B/bench_protobuf_c" "$B/bench_nanopb"
 cmake --build "$B" -j4 --target bench_all >"$B/build.log" 2>&1 ||
 	{ cat "$B/build.log" >&2; exit 1; }
 
@@ -30,6 +32,9 @@ for p in cpp upb protobuf_c nanopb; do
 	[ ! -x "$B/bench_$p" ] || PROGS="$PROGS $p"
 done
 if [ -n "${GREMLIN_ZIG_DIR:-}" ]; then
+	# The build below runs from another directory.
+	ZIG=$(command -v "$ZIG") || { echo "zig not found" >&2; exit 1; }
+	case $ZIG in /*) ;; *) ZIG=$(pwd)/$ZIG ;; esac
 	# A copy without the golden_message run, which overruns its buffer.
 	rm -rf "$B/zig"
 	mkdir "$B/zig"
@@ -39,7 +44,7 @@ if [ -n "${GREMLIN_ZIG_DIR:-}" ]; then
 	grep -q "try runGoldenMessageBenchmarks(" "$BZ" ||
 		{ echo "gremlin.zig: golden_message call not found in $BZ" >&2; exit 1; }
 	sed "/try runGoldenMessageBenchmarks(/d" "$BZ" >"$BZ.new" && mv "$BZ.new" "$BZ"
-	(cd "$B/zig" && "$ZIG" build benchmark -Doptimize=ReleaseFast >/dev/null)
+	(cd "$B/zig" && "$ZIG" build benchmark >/dev/null)
 	PROGS="$PROGS zig"
 fi
 if [ -n "${GREMLIN_GO_DIR:-}" ]; then
@@ -193,7 +198,7 @@ END {
 	print "Spread: the widest (max - min) / median between rounds over the four operations.\n"
 	for (i = 1; i <= 2; i++) {
 		w = i == 1 ? "deep" : "golden"
-		printf "%s, same input bytes:\n\n", title[w]
+		printf "%s, %s:\n\n", title[w], (w == "deep" ? "same input bytes" : "same bytes to parse, each its own message to marshal")
 		table(w, "gremlin cpp upb protobuf_c nanopb",
 		    "gremlin.c|protobuf C++|upb|protobuf-c|nanopb")
 		# zig runs DeepNested only; golden_message in go does other work.

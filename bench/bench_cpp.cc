@@ -90,6 +90,10 @@ bench_golden(const uint8_t *data, size_t len, size_t n)
 		exit(1);
 	}
 	msg.DiscardUnknownFields();
+	if (msg.repeated_nested_message_size() < 2) {
+		fprintf(stderr, "cpp: golden_message has under two repeated_nested_message\n");
+		exit(1);
+	}
 	BENCH("golden", "marshal", n, {
 		int32_t i = (int32_t)(bench_i & 1023);
 		msg.set_optional_int32(101 + i);
@@ -143,5 +147,7 @@ main(int argc, char **argv)
 	uint8_t *golden = bench_load(argv[3], &golden_len);
 	bench_deep(deep, deep_len, n);
 	bench_golden(golden, golden_len, n);
+	free(deep);
+	free(golden);
 	return 0;
 }

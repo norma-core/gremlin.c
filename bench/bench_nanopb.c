@@ -116,13 +116,19 @@ main(int argc, char **argv)
 	while (pb_decode_tag(&s, &wt, &tag, &eof)) {
 		if (!pb_skip_field(&s, wt)) {
 			fprintf(stderr, "nanopb: cannot parse golden_message (%s), skipped\n", PB_GET_ERROR(&s));
-			return 0;
+			goto out;
 		}
 	}
 	if (!eof) {
 		fprintf(stderr, "nanopb: cannot parse golden_message (%s), skipped\n", PB_GET_ERROR(&s));
-		return 0;
+		goto out;
 	}
 	fprintf(stderr, "nanopb: golden_message is readable, but has no benchmark here\n");
+	free(deep);
+	free(golden);
 	return 1;
+out:
+	free(deep);
+	free(golden);
+	return 0;
 }

@@ -45,6 +45,10 @@ bench_deep(const uint8_t *data, size_t len, size_t n)
 		exit(1);
 	}
 
+	if (benchmark__deep_nested__get_packed_size(msg) > sizeof out) {
+		fprintf(stderr, "protobuf-c: deep_nested does not fit the buffer\n");
+		exit(1);
+	}
 	BENCH("deep", "marshal", n, sink = (int64_t)benchmark__deep_nested__pack(msg, out));
 
 	BENCH("deep", "unmarshal", n, {
@@ -86,6 +90,12 @@ bench_golden(const uint8_t *data, size_t len, size_t n)
 	}
 	size_t unknown = msg->base.n_unknown_fields;
 	msg->base.n_unknown_fields = 0;
+	/* Room for the updated values, which take a few more bytes than the file's. */
+	if (msg->n_repeated_nested_message < 2 ||
+	    protobuf_unittest__test_all_types__get_packed_size(msg) + 64 > sizeof out) {
+		fprintf(stderr, "protobuf-c: golden_message does not fit the benchmark\n");
+		exit(1);
+	}
 
 	BENCH("golden", "marshal", n, {
 		int32_t i = (int32_t)(bench_i & 1023);
@@ -140,5 +150,7 @@ main(int argc, char **argv)
 	uint8_t *golden = bench_load(argv[3], &golden_len);
 	bench_deep(deep, deep_len, n);
 	bench_golden(golden, golden_len, n);
+	free(deep);
+	free(golden);
 	return 0;
 }

@@ -21,16 +21,19 @@ far one round can be from another. A benchmark that fails stops the run.
 gremlin.zig and gremlin_go join when their checkouts are given:
 
 ```bash
-GREMLIN_ZIG_DIR=../gremlin.zig ZIG=zig-0.15 \
+GREMLIN_ZIG_DIR=../gremlin.zig ZIG=$(brew --prefix zig@0.15)/bin/zig \
 GREMLIN_GO_DIR=../norma-core/shared/gremlin_go/bench \
 bench/run.sh
 ```
 
 They run their own benchmark programs (`integration-test/benchmark.zig`,
-`cmd/benchmark`): the same four operations, but each builds its own
-DeepNested (1409 bytes there, 1411 here), so they get a table of their own,
-for DeepNested only. gremlin.zig's golden_message marshal writes 481 bytes
-into a 480-byte buffer from the tenth update on, so `run.sh` builds a copy
+`cmd/benchmark`), with the same four operations and the same fields read,
+but not the same program: each builds its own DeepNested (1409 bytes there,
+1411 here); gremlin_go's and protobuf-go's Marshal return a new slice each
+call; both time with their own clock and print whole nanoseconds, and Go
+runs a GC after warm-up. So they get a table of their own, for DeepNested
+only. gremlin.zig's golden_message marshal writes 481 bytes
+into a 480-byte buffer from update i = 10 on, so `run.sh` builds a copy
 of the checkout in the build directory with that run taken out of `main`;
 the checkout itself is not touched. gremlin_go's golden_message run is
 memory-safe but does other work (its marshal sets a constant, its Deep
@@ -124,7 +127,8 @@ What the numbers do and do not show:
   macOS 26.6 with protobuf 36.2; Linux is Ubuntu 24.04 with its protobuf
   3.21, which has no upb.
 
-  Marshal allocates nothing in any library. The C++ timings include those
+  Marshal allocates nothing on the heap in any of these five; gremlin_go's
+  and protobuf-go's return a new slice per call. The C++ timings include those
   allocations, as they would in use.
 - **nanopb** is set up as on a device: strings and scalar arrays inline with
   a fixed `max_size` / `max_count`, repeated messages through pointers.
@@ -137,6 +141,6 @@ What the numbers do and do not show:
   writes them one by one, so on `golden_message` gremlin.c writes fewer
   bytes. Both parse to the same message.
 - **gremlin.zig and gremlin_go** run their own programs with their own copy
-  of DeepNested (1409 bytes), on the same scenarios; golden_message is
-  left out for them (above). gremlin.zig is built
-  ReleaseFast (`-Doptimize`, its library included), Go with plain `go build`.
+  of DeepNested (1409 bytes), on the same operations; golden_message is
+  left out for them (above). gremlin.zig's `build.zig` builds its benchmark
+  and library ReleaseFast, Go is plain `go build`.
