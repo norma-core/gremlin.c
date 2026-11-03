@@ -729,9 +729,12 @@ emit_pairs(struct gremlinc_writer *w, struct gremlinc_name_scope *scope,
 static const char *
 elem_size(struct gremlind_arena *a, const struct ep_field *f, const char *ref)
 {
-	/* Integer arithmetic, not a cast: the sum frame lemmas do not go through casts. */
+	/* Integer arithmetic, not a cast: the sum frame lemmas do not go through casts.
+	 * An enum spells out enum_wire: whatsapp's BotCapabilityMetadata sum frame fails through it. */
 	if (f->is_enum)
-		return value_size(a, f->sk, true, ref);
+		return dup(a, "varint_size(%s < 0 ? %s + 18446744073709551616 :\n"
+		    "        %s >= 2147483648 ? %s + 18446744069414584320 : %s)",
+		    ref, ref, ref, ref, ref);
 	if (f->sk == SCALAR_INT32 || f->sk == SCALAR_INT64)
 		return dup(a, "varint_size(%s < 0 ? %s + 18446744073709551616 : %s)", ref, ref, ref);
 	return value_size(a, f->sk, false, ref);

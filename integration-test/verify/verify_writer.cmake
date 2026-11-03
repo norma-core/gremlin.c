@@ -3,7 +3,8 @@
 # built on them, and the lemmas. Lemmas go in a second run: their induction
 # needs the tip prover.
 #
-#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>] -P verify_writer.cmake
+#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>]
+#         [-DLEMMAS=<name,...>] -P verify_writer.cmake
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
@@ -129,5 +130,19 @@ function(_run report)
     message(STATUS "${_total} goals proved (${report})")
 endfunction()
 
+# -DLEMMAS=a,b proves only those lemmas, ones a corpus header once failed.
+if(LEMMAS)
+    _run("${REPORT}" -wp-prop=${LEMMAS} -wp-prover alt-ergo,z3,tip)
+    # frama-c skips a -wp-prop name it does not know; each must have its goal.
+    file(READ "${REPORT}" _json)
+    string(REPLACE "," ";" _wanted "${LEMMAS}")
+    foreach(_l IN LISTS _wanted)
+        string(FIND "${_json}" "\"typed_lemma_${_l}\"" _at)
+        if(_at EQUAL -1)
+            message(FATAL_ERROR "no goal for lemma ${_l}")
+        endif()
+    endforeach()
+    return()
+endif()
 _run("${REPORT}" -wp-rte -wp-smoke-tests -wp-prover alt-ergo,z3 -wp-fct ${_fcts_arg})
 _run("${REPORT}.lemmas" -wp-prop=@lemma -wp-prover alt-ergo,z3,tip)

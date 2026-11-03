@@ -112,4 +112,18 @@ if(FRAMAC AND NOT CMAKE_VERSION VERSION_LESS 3.19)
         COMMENT "WP: write side of generated code"
         VERBATIM
     )
+    # whatsapp's repeated-enum sum lemmas prove only with the sum spelled out;
+    # the rest of the corpus is too slow for a local target.
+    add_custom_target(verify-whatsapp-enum-sums
+        COMMAND ${CMAKE_COMMAND}
+            -DFRAMAC=${FRAMAC}
+            -DHEADER=${CMAKE_CURRENT_BINARY_DIR}/integration_protos/whatsapp.pb.h
+            -DRUNTIME_INCLUDE=${REPO_ROOT}/runtime/include
+            -DREPORT=${CMAKE_CURRENT_BINARY_DIR}/verify-whatsapp-enum-sums.json
+            -DLEMMAS=BotCapabilityMetadata_capabilities_sum_frame,BotModeSelectionMetadata_mode_sum_frame
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/verify/verify_writer.cmake
+        DEPENDS integration_protos_generate
+        COMMENT "WP: whatsapp's repeated-enum sum lemmas"
+        VERBATIM
+    )
 endif()
