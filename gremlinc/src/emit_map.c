@@ -161,7 +161,7 @@ emit_slot_size_contrib(struct gremlinc_writer *w,
 		W(" + gremlin_varint_size("); W(ref); W(".len) + "); W(ref); W(".len;\n");
 		break;
 	case GREMLINC_MS_ENUM:
-		W(" + gremlin_varint_size((uint64_t)(int64_t)"); W(ref); W(");\n");
+		W(" + gremlin_varint_size((uint64_t)(int64_t)(int32_t)"); W(ref); W(");\n");
 		break;
 	case GREMLINC_MS_MESSAGE: {
 		/* Compute child size once above this line; the ref holds
@@ -247,7 +247,7 @@ emit_slot_encode(struct gremlinc_writer *w,
 		W("\t\t_off = gremlin_write_bytes_at(_buf, _off, "); W(ref); W(".data, "); W(ref); W(".len);\n");
 		break;
 	case GREMLINC_MS_ENUM:
-		W("\t\t_off = gremlin_varint_encode_at(_buf, _off, (uint64_t)(int64_t)"); W(ref); W(");\n");
+		W("\t\t_off = gremlin_varint_encode_at(_buf, _off, (uint64_t)(int64_t)(int32_t)"); W(ref); W(");\n");
 		break;
 	case GREMLINC_MS_MESSAGE: {
 		const char *tname = s->msg_ref->c_name;

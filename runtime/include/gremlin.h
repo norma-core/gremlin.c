@@ -120,6 +120,12 @@ gremlin_writer_init(struct gremlin_writer *w, uint8_t *buf, size_t cap)
     }
 */
 
+/* An enum value as protobuf puts it on the wire: an int32, sign-extended. */
+/*@ logic integer enum_wire(integer v) =
+      v < 0 ? v + 18446744073709551616 :
+      v >= 2147483648 ? v + 18446744069414584320 : v;
+*/
+
 /*
  * Byte-level spec: the k-th byte the canonical LEB128 encoder writes
  * for value v. All bytes except the last have the continuation bit

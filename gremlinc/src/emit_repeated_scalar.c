@@ -82,7 +82,7 @@ emit_elem_wire_size_expr(struct gremlinc_writer *w,
 {
 	enum gremlinp_parsing_error err;
 	if (e->is_enum) {
-		W("gremlin_varint_size((uint64_t)(int64_t)"); W(ref); W(")");
+		W("gremlin_varint_size((uint64_t)(int64_t)(int32_t)"); W(ref); W(")");
 		return GREMLINP_OK;
 	}
 	if (e->wire == WT_FIXED32_NUM) { W("4"); return GREMLINP_OK; }
@@ -117,7 +117,7 @@ emit_elem_encode(struct gremlinc_writer *w,
 {
 	enum gremlinp_parsing_error err;
 	if (e->is_enum) {
-		W("\t\t_off = gremlin_varint_encode_at(_buf, _off, (uint64_t)(int64_t)"); W(ref); W(");\n");
+		W("\t\t_off = gremlin_varint_encode_at(_buf, _off, (uint64_t)(int64_t)(int32_t)"); W(ref); W(");\n");
 		return GREMLINP_OK;
 	}
 	switch (e->wire) {
