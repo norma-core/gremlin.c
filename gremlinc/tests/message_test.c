@@ -442,6 +442,38 @@ squeeze(char *s)
 	*o = '\0';
 }
 
+/* A singular enum goes through gremlin_enum_wire, whose casts verify-runtime proves. */
+static TEST(singular_enum_uses_enum_wire)
+{
+	char src[] =
+		"syntax = \"proto3\";\n"
+		"enum E { A = 0; }\n"
+		"message M { E e = 1; }\n";
+	struct gremlind_arena arena;
+	ASSERT_EQ(1, gremlind_arena_init_malloc(&arena, 256 * 1024));
+	struct gremlind_source gs;
+	struct gremlind_file *file = build(&arena, &gs, src);
+	ASSERT_NOT_NULL(file);
+
+	struct gremlinc_name_scope s, logic;
+	gremlinc_name_scope_init(&s, &arena);
+	gremlinc_name_scope_init(&logic, &arena);
+	ASSERT_EQ(GREMLINP_OK, gremlinc_assign_c_names(&s, file));
+	struct gremlind_message *order[1] = { &file->messages.items[0] };
+	struct gremlinc_encode_plan *plan;
+	ASSERT_EQ(GREMLINP_OK, gremlinc_encode_plan_build(&arena, &logic, NULL, order, 1, &plan));
+	struct gremlinc_writer w;
+	ASSERT_TRUE(gremlinc_writer_init_owned(&w, 65536));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_emit_message(&w, &s, NULL, order[0], plan));
+	ASSERT_EQ(GREMLINP_OK, gremlinc_write(&w, "", 1));
+
+	ASSERT_NOT_NULL(strstr(w.buf, "gremlin_varint_size(gremlin_enum_wire(m->e))"));
+	ASSERT_NOT_NULL(strstr(w.buf, "gremlin_varint_encode_at(_buf, _off, gremlin_enum_wire(m->e))"));
+	ASSERT_NULL(strstr(w.buf, "(int32_t)m->e"));
+	gremlinc_writer_dispose(&w);
+	gremlind_arena_free_malloc(&arena);
+}
+
 /* A repeated enum's size sum spells out enum_wire; it must stay what gremlin.h defines. */
 static TEST(repeated_enum_size_matches_enum_wire)
 {
@@ -591,6 +623,7 @@ void message_test(void)
 	RUN_TEST(reserved_getters_follow_emission_order);
 	RUN_TEST(type_in_the_runtime_namespace_gets_a_suffix);
 	RUN_TEST(repeated_element_with_children_gets_no_write_contracts);
+	RUN_TEST(singular_enum_uses_enum_wire);
 	RUN_TEST(repeated_enum_size_matches_enum_wire);
 	RUN_TEST(heavy_repeated_message_gets_no_write_contracts);
 	RUN_TEST(wide_message_gets_no_write_contracts);

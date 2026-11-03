@@ -109,11 +109,11 @@ Artifacts:
 
 ### 📊 Current status
 
-**All 743 proof obligations pass ✅, plus 123 smoke tests:**
+**All 748 proof obligations pass ✅, plus 124 smoke tests:**
 
 | Group              | Proved      | Smoke     | Notes                             |
 | ------------------ | ----------- | --------- | --------------------------------- |
-| 🛠️ `verify-runtime` | 743 / 743   | 123 / 123 | Every primitive in `gremlin.h` |
+| 🛠️ `verify-runtime` | 748 / 748   | 124 / 124 | Every primitive in `gremlin.h` |
 
 **Smoke tests are mandatory.** Frama-C's `-wp-smoke-tests` is wired
 into `WP_BASE_FLAGS` and detects unreachable code, contradictory
