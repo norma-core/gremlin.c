@@ -46,8 +46,8 @@ needs Zig 0.15.
 CMake, protoc and the libraries to compare against.
 
 ```bash
-brew install cmake protobuf protobuf-c nanopb                    # macOS
-apt install cmake libprotobuf-dev protobuf-compiler \
+brew install cmake pkgconf protobuf protobuf-c nanopb            # macOS
+apt install cmake g++ pkg-config libprotobuf-dev protobuf-compiler \
     libprotobuf-c-dev protobuf-c-compiler nanopb                 # Debian, Ubuntu
 ```
 
@@ -103,8 +103,9 @@ What the numbers do and do not show:
   protoc. gremlin.c builds the message in code and checks that its encoding
   is that file byte for byte; nanopb checks the same of its own encoding.
   Every C and C++ program checks that it parses its input before timing it.
-- **Marshal.** Each program marshals the same values, the five fields it
-  changes going round 0 to 1023, so the encoded size repeats every 1024
+- **Marshal.** Each program marshals the same values. DeepNested is
+  marshalled unchanged; on golden_message the five fields each program
+  changes go round 0 to 1023, so the encoded size repeats every 1024
   iterations instead of growing. On
   golden_message gremlin.c encodes the message built in code, with the
   values of the file; the others encode the file as parsed, unknown fields
@@ -147,7 +148,7 @@ What the numbers do and do not show:
   bump pointer, as on a device, with nothing to free.
 - **Iterations.** A program runs all its operations at one iteration count,
   sized so the whole program takes about the given time; at 30 s its
-  fastest operation (gremlin.c's Unmarshal) still runs over half a second a
+  fastest operations (gremlin.c's Unmarshal and Lazy Read) still run over half a second a
   round.
 - **gremlin.zig and gremlin_go** run their own programs with their own copy
   of DeepNested (1409 bytes), on the same operations; golden_message is

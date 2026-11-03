@@ -11,6 +11,8 @@ DEEP=$B/gen/deep_nested.bin
 GOLDEN=$ROOT/integration-test/binaries/golden_message
 
 cmake -S "$ROOT/bench" -B "$B" -DCMAKE_BUILD_TYPE=Release >/dev/null
+# A library no longer found must not leave its old program behind.
+rm -f "$B/bench_cpp" "$B/bench_upb" "$B/bench_protobuf_c" "$B/bench_nanopb"
 cmake --build "$B" -j4 --target bench_all >/dev/null
 
 if [ "$(uname)" = Darwin ]; then

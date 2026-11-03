@@ -197,7 +197,7 @@ bytes); gremlin.zig's golden_message run overruns its buffer and is not
 run, gremlin_go's does other work and is not shown (see `bench/README.md`).
 
 ```bash
-brew install cmake protobuf protobuf-c nanopb   # or the apt packages, see bench/
+brew install cmake pkgconf protobuf protobuf-c nanopb   # or apt, see bench/
 bench/run.sh                                    # 30 s per program and round, 5 rounds
 ```
 
