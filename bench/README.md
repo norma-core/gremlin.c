@@ -104,7 +104,8 @@ What the numbers do and do not show:
   is that file byte for byte; nanopb checks the same of its own encoding.
   Every C and C++ program checks that it parses its input before timing it.
 - **Marshal.** Each program marshals the same values, the five fields it
-  changes going round 0 to 1023 so their varints keep one size. On
+  changes going round 0 to 1023, so the encoded size repeats every 1024
+  iterations instead of growing. On
   golden_message gremlin.c encodes the message built in code, with the
   values of the file; the others encode the file as parsed, unknown fields
   dropped.
@@ -137,9 +138,17 @@ What the numbers do and do not show:
 - **Groups.** protobuf-c and nanopb reject the group wire types, and
   `golden_message` has groups, so both are n/a there; both try the file and
   skip it only when it fails to parse.
-- **Packing.** gremlin.c writes proto2 repeated scalars packed and protoc
-  writes them one by one, so on `golden_message` gremlin.c writes fewer
-  bytes. Both parse to the same message.
+- **Packing.** gremlin.c writes a repeated scalar with two or more
+  elements packed and protoc writes proto2 ones one by one, so on
+  `golden_message` gremlin.c writes fewer bytes. Both parse to the same
+  message.
+- **Teardown.** C++ and upb destroy their arena every iteration, inside the
+  timing, which frees C++'s heap strings; protobuf-c and nanopb reset their
+  bump pointer, as on a device, with nothing to free.
+- **Iterations.** A program runs all its operations at one iteration count,
+  sized so the whole program takes about the given time; at 30 s its
+  fastest operation (gremlin.c's Unmarshal) still runs over half a second a
+  round.
 - **gremlin.zig and gremlin_go** run their own programs with their own copy
   of DeepNested (1409 bytes), on the same operations; golden_message is
   left out for them (above). gremlin.zig's `build.zig` builds its benchmark

@@ -50,13 +50,16 @@ for w in deep golden; do
 			bin=$B/bench_$p
 			if [ ! -x "$bin" ]; then
 				c=n/a
-			elif [ "$w" = golden ] && { [ "$p" = protobuf_c ] || [ "$p" = nanopb ]; }; then
-				c=n/a
 			else
 				a=$(BENCH_ONLY=$w/$op count "$bin" 1000 "$DEEP" "$GOLDEN")
-				b=$(BENCH_ONLY=$w/$op count "$bin" 2000 "$DEEP" "$GOLDEN")
-				# The warm-up is fixed, so the second run has 1000 more iterations.
-				c=$(awk -v a="$a" -v b="$b" 'BEGIN { printf "%.1f", (b - a) / 1000 }')
+				# As in run.sh: a library that cannot parse golden_message skips it.
+				if [ "$w" = golden ] && grep -q "cannot parse golden" "$ERR"; then
+					c=n/a
+				else
+					b=$(BENCH_ONLY=$w/$op count "$bin" 2000 "$DEEP" "$GOLDEN")
+					# The warm-up is fixed, so the second run has 1000 more iterations.
+					c=$(awk -v a="$a" -v b="$b" 'BEGIN { printf "%.1f", (b - a) / 1000 }')
+				fi
 			fi
 			line="$line $c |"
 		done

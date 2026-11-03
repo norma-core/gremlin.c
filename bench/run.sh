@@ -38,8 +38,12 @@ if [ -n "${GREMLIN_ZIG_DIR:-}" ]; then
 	# A copy without the golden_message run, which overruns its buffer.
 	rm -rf "$B/zig"
 	mkdir "$B/zig"
-	(cd "$GREMLIN_ZIG_DIR" && tar cf - --exclude .git --exclude .zig-cache --exclude zig-out .) |
-		(cd "$B/zig" && tar xf -)
+	(cd "$GREMLIN_ZIG_DIR" && tar cf "$B/zig.tar" --exclude .git --exclude .zig-cache --exclude zig-out .)
+	(cd "$B/zig" && tar xf "$B/zig.tar")
+	rm -f "$B/zig.tar"
+	# Its build.zig, not a -Doptimize flag, sets the benchmark's mode.
+	grep -q "\.optimize = \.ReleaseFast" "$B/zig/build.zig" ||
+		{ echo "gremlin.zig: build.zig no longer builds the benchmark ReleaseFast" >&2; exit 1; }
 	BZ=$B/zig/integration-test/benchmark.zig
 	grep -q "try runGoldenMessageBenchmarks(" "$BZ" ||
 		{ echo "gremlin.zig: golden_message call not found in $BZ" >&2; exit 1; }
@@ -96,7 +100,9 @@ run() {
 	gremlin|zig|go)
 		report "$1" >"$OUT.p"
 		case $1 in gremlin) want=8 ;; zig) want=4 ;; go) want=16 ;; esac
-		[ "$(wc -l <"$OUT.p")" -eq "$want" ] || { echo "$1: unexpected report" >&2; exit 1; }
+		# Every line labelled, each label once: a renamed header cannot pass as n/a.
+		[ "$(awk 'NF == 4' "$OUT.p" | cut -d' ' -f1-3 | sort -u | wc -l)" -eq "$want" ] &&
+			[ "$(wc -l <"$OUT.p")" -eq "$want" ] || { echo "$1: unexpected report" >&2; exit 1; }
 		mv "$OUT.p" "$OUT" ;;
 	esac
 }

@@ -91,7 +91,16 @@ bench_golden(const char *data, size_t len, size_t n)
 	}
 	discard_unknown(UPB_UPCAST(msg), keep);
 	/* C++ drops unknown fields at every depth; the sub-messages marshal writes have none. */
+	size_t nrep;
+	const protobuf_unittest_TestAllTypes_NestedMessage *const *reps =
+	    protobuf_unittest_TestAllTypes_repeated_nested_message(msg, &nrep);
+	if (nrep < 2) {
+		fprintf(stderr, "upb: golden_message has under two repeated_nested_message\n");
+		exit(1);
+	}
 	const upb_Message *subs[] = {
+		UPB_UPCAST(reps[0]),
+		UPB_UPCAST(reps[1]),
 		UPB_UPCAST(protobuf_unittest_TestAllTypes_optional_nested_message(msg)),
 		UPB_UPCAST(protobuf_unittest_TestAllTypes_optional_foreign_message(msg)),
 		UPB_UPCAST(protobuf_unittest_TestAllTypes_optional_import_message(msg)),
@@ -101,12 +110,6 @@ bench_golden(const char *data, size_t len, size_t n)
 			fprintf(stderr, "upb: unknown fields in a sub-message\n");
 			exit(1);
 		}
-	}
-	size_t nrep;
-	protobuf_unittest_TestAllTypes_repeated_nested_message(msg, &nrep);
-	if (nrep < 2) {
-		fprintf(stderr, "upb: golden_message has under two repeated_nested_message\n");
-		exit(1);
 	}
 
 	BENCH("golden", "marshal", n, WITH_ARENA(a, {
