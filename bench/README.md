@@ -57,6 +57,11 @@ is set at compile time, so CMake builds its runtime from source: fetched from
 GitHub at the installed generator's version, or a checkout given as
 `-DNANOPB_SOURCE_DIR=<dir>`; without either, nanopb is n/a.
 
+macOS and Linux only: the scripts are POSIX sh, the programs time with
+`clock_gettime`, and `allocs.sh` counts through dyld or glibc. gremlin.h
+and the generated headers build with MSVC, but this benchmark does not
+run on Windows.
+
 ## Benchmark Structure
 
 Two messages:
