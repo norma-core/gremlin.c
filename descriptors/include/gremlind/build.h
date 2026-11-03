@@ -1,6 +1,7 @@
 #ifndef _GREMLIND_BUILD_H_
 #define _GREMLIND_BUILD_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "arena.h"
@@ -36,5 +37,13 @@ struct gremlind_build_result {
 
 struct gremlind_build_result	gremlind_build_file(struct gremlind_arena *arena,
 						    struct gremlinp_parser_buffer *buf);
+
+/* What a field's options say on packing: `[packed = ...]` or
+ * `features.repeated_field_encoding`; -1 when nothing, else 0 or 1. */
+int	gremlind_field_packed_option(const struct gremlinp_parser_buffer *buf,
+				     const struct gremlinp_option_list_result *opts);
+
+/* Packing of a repeated scalar in `file` that says nothing itself. */
+bool	gremlind_file_packed_default(const struct gremlind_file *file);
 
 #endif /* !_GREMLIND_BUILD_H_ */

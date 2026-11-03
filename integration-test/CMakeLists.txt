@@ -44,6 +44,13 @@ target_compile_options(integration_test PRIVATE
     -Wno-unused-function -Wno-gnu-zero-variadic-macro-arguments
 )
 
+# Generated headers must build as C99, recursive messages (NestedTestAllTypes,
+# the fixtures' Ping and Pong) included; one source per gremlinc-gen run.
+add_library(c99_headers OBJECT c99_headers.c c99_wp_fixture.c c99_wp_writer.c)
+target_link_libraries(c99_headers PRIVATE integration_protos wp_fixture wp_writer)
+set_target_properties(c99_headers PROPERTIES C_STANDARD 99)
+target_compile_options(c99_headers PRIVATE -Wno-unused-function)
+
 # Release-optimised benchmark binary — gremlin.zig bench runs with
 # `-Doptimize=ReleaseFast` so anything less is an apples-to-oranges
 # comparison. Kept separate from integration_test so the test binary

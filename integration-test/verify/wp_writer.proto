@@ -64,4 +64,13 @@ message Packs {
     repeated bool f = 6;
     repeated string g = 7;
     repeated sfixed32 h = 8;
+    repeated int32 ua = 9 [packed = false];
+    repeated fixed64 ub = 10 [packed = false];
+}
+
+message Unpacks {
+    repeated Kind k = 1 [packed = false];
+    repeated bool b = 2 [packed = false];
+    repeated uint64 u = 3 [packed = false];
+    repeated fixed32 x = 4 [packed = false];
 }

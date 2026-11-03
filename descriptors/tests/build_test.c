@@ -338,6 +338,35 @@ static TEST(build_mixed_top_and_nested_enums_all_on_file)
 	gremlind_arena_free_malloc(&arena);
 }
 
+/* protoc's packing: [packed], the repeated_field_encoding feature of the
+ * field or file, else proto2 unpacked and proto3 / editions packed. */
+static TEST(build_repeated_packing)
+{
+	char p2[] = "syntax = \"proto2\";\n"
+		"message M { repeated int32 a = 1; repeated int32 b = 2 [packed = true]; }\n";
+	char p3[] = "syntax = \"proto3\";\n"
+		"message M { repeated int32 a = 1; repeated int32 b = 2 [packed = false]; }\n";
+	char ed[] = "edition = \"2023\";\n"
+		"message M { repeated int32 a = 1;\n"
+		"  repeated int32 b = 2 [features.repeated_field_encoding = EXPANDED]; }\n";
+	char ed_file[] = "edition = \"2023\";\n"
+		"message M { repeated int32 a = 1;\n"
+		"  repeated int32 b = 2 [features.repeated_field_encoding = PACKED]; }\n"
+		"option features.repeated_field_encoding = EXPANDED;\n";
+	char *srcs[] = { p2, p3, ed, ed_file };
+	const bool want_a[] = { false, true, true, false };
+	const bool want_b[] = { true, false, false, true };
+
+	for (size_t i = 0; i < 4; i++) {
+		struct gremlind_arena arena = make_arena();
+		struct gremlind_build_result r = build(&arena, srcs[i]);
+		ASSERT_EQ(GREMLINP_OK, r.error);
+		ASSERT_EQ(want_a[i], r.file->messages.items[0].fields.items[0].packed);
+		ASSERT_EQ(want_b[i], r.file->messages.items[0].fields.items[1].packed);
+		gremlind_arena_free_malloc(&arena);
+	}
+}
+
 static TEST(build_propagates_parse_error)
 {
 	char src[] = "syntax = \"proto9\";\n";
@@ -358,6 +387,7 @@ void build_test(void)
 	RUN_TEST(build_empty_file_has_no_entries);
 	RUN_TEST(build_proto3_syntax_only);
 	RUN_TEST(build_edition_2023_only);
+	RUN_TEST(build_repeated_packing);
 	RUN_TEST(build_syntax_package);
 	RUN_TEST(build_imports_preserved_in_order_and_unresolved);
 	RUN_TEST(build_single_enum_with_values);
