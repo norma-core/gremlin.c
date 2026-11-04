@@ -1,0 +1,244 @@
+root_id: 1
+root_name: "root_node_with_complex_nested_structure"
+nested {
+  id: 10
+  title: "level1_primary_branch"
+  nested {
+    id: 20
+    description: "level2_deeply_nested_with_payload"
+    nested {
+      id: 30
+      name: "level3_inner_structure"
+      nested {
+        value: 40
+        data: "level4_leaf_node_with_data"
+        numbers: 1
+        numbers: 2
+        numbers: 3
+        numbers: 4
+        numbers: 5
+        numbers: 6
+        numbers: 7
+        numbers: 8
+        numbers: 9
+        numbers: 10
+        numbers: 11
+        numbers: 12
+        numbers: 13
+        numbers: 14
+        numbers: 15
+      }
+      items {
+        value: 41
+        data: "item1_with_numbers"
+        numbers: 10
+        numbers: 20
+        numbers: 30
+        numbers: 40
+        numbers: 50
+      }
+      items {
+        value: 42
+        data: "item2_with_numbers"
+        numbers: 60
+        numbers: 70
+        numbers: 80
+        numbers: 90
+        numbers: 100
+      }
+      items {
+        value: 43
+        data: "item3_with_numbers"
+        numbers: 110
+        numbers: 120
+        numbers: 130
+        numbers: 140
+        numbers: 150
+      }
+      items {
+        value: 44
+        data: "item4_with_numbers"
+        numbers: 160
+        numbers: 170
+        numbers: 180
+        numbers: 190
+        numbers: 200
+      }
+      items {
+        value: 45
+        data: "item5_with_numbers"
+        numbers: 210
+        numbers: 220
+        numbers: 230
+        numbers: 240
+        numbers: 250
+      }
+    }
+    items {
+      id: 31
+      name: "item1_nested"
+      nested {
+        value: 310
+        data: "nested_item1_data"
+        numbers: 1
+        numbers: 2
+        numbers: 3
+        numbers: 4
+        numbers: 5
+      }
+      items {
+        value: 311
+        data: "sub1"
+        numbers: 1
+        numbers: 2
+      }
+      items {
+        value: 312
+        data: "sub2"
+        numbers: 3
+        numbers: 4
+      }
+    }
+    items {
+      id: 32
+      name: "item2_nested"
+      nested {
+        value: 320
+        data: "nested_item2_data"
+        numbers: 6
+        numbers: 7
+        numbers: 8
+        numbers: 9
+        numbers: 10
+      }
+      items {
+        value: 321
+        data: "sub3"
+        numbers: 5
+        numbers: 6
+      }
+      items {
+        value: 322
+        data: "sub4"
+        numbers: 7
+        numbers: 8
+      }
+    }
+    items {
+      id: 33
+      name: "item3_nested"
+      nested {
+        value: 330
+        data: "nested_item3_data"
+        numbers: 11
+        numbers: 12
+        numbers: 13
+        numbers: 14
+        numbers: 15
+      }
+    }
+    items {
+      id: 34
+      name: "item4_nested"
+      nested {
+        value: 340
+        data: "nested_item4_data"
+        numbers: 16
+        numbers: 17
+        numbers: 18
+        numbers: 19
+        numbers: 20
+      }
+    }
+    payload: "this is a much longer payload with more realistic data content that would be found in production systems\000"
+  }
+  items {
+    id: 21
+    description: "item1_level2_with_payload"
+    nested {
+      id: 210
+      name: "nested_in_item1"
+      nested {
+        value: 2100
+        data: "deep_nested"
+        numbers: 100
+        numbers: 200
+        numbers: 300
+      }
+    }
+    payload: "payload for item 1"
+  }
+  items {
+    id: 22
+    description: "item2_level2_with_payload"
+    nested {
+      id: 220
+      name: "nested_in_item2"
+    }
+    payload: "payload for item 2 with more data"
+  }
+  items {
+    id: 23
+    description: "item3_level2_with_payload"
+    payload: "payload for item 3"
+  }
+  items {
+    id: 24
+    description: "item4_level2_with_payload"
+    payload: "payload for item 4 with additional content\000"
+  }
+  score: 1.23456789
+}
+items {
+  id: 11
+  title: "item1_top_level"
+  nested {
+    id: 110
+    description: "nested_in_top_item1"
+    nested {
+      id: 1100
+      name: "deeply_nested_top_item1"
+    }
+    payload: "some payload data"
+  }
+  score: 2.34
+}
+items {
+  id: 12
+  title: "item2_top_level"
+  nested {
+    id: 120
+    description: "nested_in_top_item2"
+    payload: "more payload data here"
+  }
+  score: 3.45
+}
+items {
+  id: 13
+  title: "item3_top_level"
+  score: 4.56
+}
+items {
+  id: 14
+  title: "item4_top_level"
+  nested {
+    id: 140
+    description: "nested_in_top_item4"
+    payload: "final payload data"
+  }
+  score: 5.67
+}
+items {
+  id: 15
+  title: "item5_top_level"
+  score: 6.78
+}
+active: true
+tags: "tag1"
+tags: "tag2"
+tags: "tag3"
+tags: "tag4"
+tags: "tag5"
+tags: "tag6"
+tags: "tag7"
+tags: "tag8"
