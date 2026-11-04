@@ -49,7 +49,7 @@ struct ep_field {
 	const char		*def;
 	const char		*t;		/* the field's share of tsize */
 	const char		*tf;		/* frame lemma of t */
-	const char		*enc;		/* writes the field, its own proof */
+	const char		*enc;		/* function writing this field */
 	const char		*term, *tframe, *sum, *frame, *ind, *mono;
 };
 

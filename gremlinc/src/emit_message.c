@@ -394,8 +394,11 @@ gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 		    gremlinc_name_scope_mangle(&members, "_size", 5) == NULL)
 			return GREMLINP_ERROR_OUT_OF_MEMORY;
 		const char *reader;
+		/* Field encoders are named <T>_encode_<field>_at and must miss these. */
 		if (claim_join2(reserved, m->c_name, "_size") == NULL ||
+		    claim_join2(reserved, m->c_name, "_cached_size") == NULL ||
 		    claim_join2(reserved, m->c_name, "_encode") == NULL ||
+		    claim_join2(reserved, m->c_name, "_encode_at") == NULL ||
 		    (reader = claim_join2(reserved, m->c_name, "_reader")) == NULL ||
 		    claim_join2(reserved, reader, "_init") == NULL)
 			return GREMLINP_ERROR_OUT_OF_MEMORY;
