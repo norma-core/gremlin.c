@@ -744,8 +744,21 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	 * `_buf` marked `__restrict__`: tells the compiler `buf` doesn't
 	 * alias the input message, letting it fold away otherwise-forced
 	 * reloads between consecutive writes. */
-	/* Flat encode body — same rationale as `_size`: per-field helper
-	 * split cost ~7% on bench even with always_inline. */
+	/* With contracts each field is written by an always_inline function:
+	 * the proof needs the cut, the compiled code is the same as inline. */
+	for (size_t i = 0; sp != NULL && i < m->fields.count; i++) {
+		if ((err = gremlinc_espec_field_encoder_contract(w, sp, i))) return err;
+		W("static inline __attribute__((always_inline)) size_t\n");
+		W(gremlinc_espec_field_encoder(sp, i)); W("(const "); W(tname);
+		W(" *m, uint8_t * __restrict__ _buf, size_t _off)\n{\n");
+		if ((err = gremlinc_espec_field_encoder_start(w, sp, i))) return err;
+		err = dispatch_encode_field(w, scope->arena,
+					    &m->fields.items[i], sinfos[i],
+					    fnames[i], defaults[i],
+					    &map_keys[i], &map_vals[i], sp, i);
+		if (err != GREMLINP_OK) return err;
+		W("\treturn _off;\n}\n\n");
+	}
 	if ((err = gremlinc_espec_encode_contract(w, sp))) return err;
 	W("__attribute__((unused)) static size_t\n");
 	W(tname); W("_encode_at(const "); W(tname);
@@ -756,11 +769,16 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	if ((err = gremlinc_espec_encode_start(w, sp))) return err;
 	for (size_t i = 0; i < m->fields.count; i++) {
 		if ((err = gremlinc_espec_encode_field_before(w, sp, i))) return err;
-		err = dispatch_encode_field(w, scope->arena,
-					    &m->fields.items[i], sinfos[i],
-					    fnames[i], defaults[i],
-					    &map_keys[i], &map_vals[i], sp, i);
-		if (err != GREMLINP_OK) return err;
+		if (sp != NULL) {
+			W("\t_off = "); W(gremlinc_espec_field_encoder(sp, i));
+			W("(m, _buf, _off);\n");
+		} else {
+			err = dispatch_encode_field(w, scope->arena,
+						    &m->fields.items[i], sinfos[i],
+						    fnames[i], defaults[i],
+						    &map_keys[i], &map_vals[i], sp, i);
+			if (err != GREMLINP_OK) return err;
+		}
 		if ((err = gremlinc_espec_encode_field_after(w, sp, i))) return err;
 	}
 	if ((err = gremlinc_espec_encode_end(w, sp))) return err;
