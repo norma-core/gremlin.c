@@ -65,6 +65,9 @@ main(void)
 	(void)z;  (void)d;  (void)d4; (void)d8; (void)ds;
 	(void)vz32; (void)vd32; (void)bc; (void)bca;
 	(void)zz32; (void)uz32; (void)zz64; (void)uz64;
+
+	volatile uint64_t ew = gremlin_enum_wire(-1);
+	(void)ew;
 	(void)fb32; (void)fv32; (void)fb64; (void)fv64;
 	return 0;
 }

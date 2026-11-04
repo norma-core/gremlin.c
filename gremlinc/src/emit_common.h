@@ -398,6 +398,14 @@ enum gremlinp_parsing_error	gremlinc_espec_encode_start(struct gremlinc_writer *
 enum gremlinp_parsing_error	gremlinc_espec_encode_field_before(struct gremlinc_writer *w,
 							const struct gremlinc_espec *sp,
 							size_t fi);
+const char			*gremlinc_espec_field_encoder(const struct gremlinc_espec *sp,
+							size_t fi);
+enum gremlinp_parsing_error	gremlinc_espec_field_encoder_contract(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi);
+enum gremlinp_parsing_error	gremlinc_espec_field_encoder_start(struct gremlinc_writer *w,
+							const struct gremlinc_espec *sp,
+							size_t fi);
 enum gremlinp_parsing_error	gremlinc_espec_encode_field_after(struct gremlinc_writer *w,
 							const struct gremlinc_espec *sp,
 							size_t fi);

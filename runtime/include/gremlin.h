@@ -135,6 +135,18 @@ gremlin_writer_init(struct gremlin_writer *w, uint8_t *buf, size_t cap)
       v >= 2147483648 ? v + 18446744069414584320 : v;
 */
 
+/* int64_t holds an enum of either C type unchanged; the casts are proved here
+ * once instead of in every encoder that writes an enum. */
+/*@ requires -2147483648 <= v <= 4294967295;
+    assigns \nothing;
+    ensures \result == enum_wire(v);
+*/
+static inline __attribute__((always_inline)) uint64_t
+gremlin_enum_wire(int64_t v)
+{
+	return (uint64_t)(int64_t)(int32_t)v;
+}
+
 /*
  * Byte-level spec: the k-th byte the canonical LEB128 encoder writes
  * for value v. All bytes except the last have the continuation bit

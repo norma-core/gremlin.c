@@ -3,7 +3,8 @@
 # built on them, and the lemmas. Lemmas go in a second run: their induction
 # needs the tip prover.
 #
-#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>] -P verify_writer.cmake
+#   cmake -DFRAMAC=... -DHEADER=... -DRUNTIME_INCLUDE=... -DREPORT=... [-DPROTO=<.proto>] [-DCALLERS=<caller_* .c>]
+#         [-DLEMMAS=<name,...>] -P verify_writer.cmake
 
 # string(JSON) below.
 cmake_minimum_required(VERSION 3.19)
@@ -38,20 +39,35 @@ endif()
 file(STRINGS "${HEADER}" _defs REGEX "^[A-Za-z_][A-Za-z0-9_]*\\(")
 foreach(_t IN LISTS _types)
     set(_n 0)
+    set(_at 0)
     foreach(_line IN LISTS _defs)
-        if(_line MATCHES "^([A-Za-z_][A-Za-z0-9_]*)\\(const ${_t} \\*m[,)]")
+        if(_line MATCHES "^([A-Za-z_][A-Za-z0-9_]*)\\(const ${_t} \\*m([,)].*)")
             list(APPEND _fcts ${CMAKE_MATCH_1})
-            math(EXPR _n "${_n} + 1")
+            if(CMAKE_MATCH_2 MATCHES "^, uint8_t")
+                math(EXPR _at "${_at} + 1")
+            else()
+                math(EXPR _n "${_n} + 1")
+            endif()
         endif()
     endforeach()
-    # _size, _encode_at, _encode and _cached_size.
-    if(NOT _n EQUAL 4)
-        message(FATAL_ERROR "${_t}: ${_n} writer functions, expected 4")
+    # _size, _encode and _cached_size; _encode_at and the encoder of each field.
+    if(NOT _n EQUAL 3 OR _at EQUAL 0)
+        message(FATAL_ERROR "${_t}: ${_n} writer functions and ${_at} taking a buffer, expected 3 and at least 1")
     endif()
 endforeach()
 if(NOT _fcts)
     message(FATAL_ERROR "no writer functions found in ${HEADER}")
 endif()
+# A field encoder left off the list would be assumed by _encode_at, never proved.
+file(STRINGS "${HEADER}" _calls REGEX "^\t_off = [A-Za-z_][A-Za-z0-9_]*\\(m, _buf, _off\\);")
+foreach(_line IN LISTS _calls)
+    string(REGEX MATCH "[A-Za-z_][A-Za-z0-9_]*\\(" _c "${_line}")
+    string(REPLACE "(" "" _c "${_c}")
+    list(FIND _fcts ${_c} _i)
+    if(_i EQUAL -1)
+        message(FATAL_ERROR "${_c} is called by an _encode_at but not proved")
+    endif()
+endforeach()
 if(CALLERS)
     file(STRINGS "${CALLERS}" _callers REGEX "^caller_[A-Za-z0-9_]*\\(")
     foreach(_line IN LISTS _callers)
@@ -129,5 +145,19 @@ function(_run report)
     message(STATUS "${_total} goals proved (${report})")
 endfunction()
 
+# -DLEMMAS=a,b proves only those lemmas, ones a corpus header once failed.
+if(LEMMAS)
+    _run("${REPORT}" -wp-prop=${LEMMAS} -wp-prover alt-ergo,z3,tip)
+    # frama-c skips a -wp-prop name it does not know; each must have its goal.
+    file(READ "${REPORT}" _json)
+    string(REPLACE "," ";" _wanted "${LEMMAS}")
+    foreach(_l IN LISTS _wanted)
+        string(FIND "${_json}" "\"typed_lemma_${_l}\"" _at)
+        if(_at EQUAL -1)
+            message(FATAL_ERROR "no goal for lemma ${_l}")
+        endif()
+    endforeach()
+    return()
+endif()
 _run("${REPORT}" -wp-rte -wp-smoke-tests -wp-prover alt-ergo,z3 -wp-fct ${_fcts_arg})
 _run("${REPORT}.lemmas" -wp-prop=@lemma -wp-prover alt-ergo,z3,tip)
