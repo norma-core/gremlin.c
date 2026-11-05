@@ -143,20 +143,66 @@ See [`example/main.c`](example/main.c) for a full encode/decode path.
 
 ## Benchmarks
 
-`integration-test/benchmark.c` is a C port of the gremlin.zig benchmark
-corpus. On the current development machine, the generated C path is
-about 2x faster than the Zig reference on the aggregate benchmark sum.
+gremlin.c against Google's C++ protobuf, upb (Google's C runtime), protobuf-c
+and nanopb (C for embedded) on the same bytes, and on DeepNested against
+gremlin.zig and gremlin_go. Apple M3 Pro, macOS 26.6, Apple clang 17; the C and C++ programs
+`-O3 -march=native` with LTO, gremlin.zig ReleaseFast, Go as `go build` makes
+it; protobuf 36.2, protobuf-c 1.5.2, nanopb 0.4.9.2, Zig 0.15.2, Go 1.27.3.
+Median ns/op of 5 rounds, each program run for about 30 s a round, in
+rotating order; in brackets, how many times slower than gremlin.c. Spread is
+the widest (max - min) / median between rounds.
 
-Reproduce locally:
+### 🌳 DeepNested, five levels of nested and repeated messages, 1411 bytes
+
+| Operation | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb |
+|---|---|---|---|---|---|
+| 🔨 Marshal | **532 ns** | 861 ns (1.6x) | 1,185 ns (2.2x) | 1,426 ns (2.7x) | 11,047 ns (20.8x) |
+| 📖 Unmarshal | **32.0 ns** | 2,039 ns (63.7x) | 1,903 ns (59.5x) | 2,034 ns (63.6x) | 4,670 ns (145.9x) |
+| 🎯 Lazy Read | **32.3 ns** | 2,052 ns (63.5x) | 1,914 ns (59.3x) | 2,037 ns (63.1x) | 4,716 ns (146.0x) |
+| 🔍 Deep Access | **91.0 ns** | 2,039 ns (22.4x) | 1,906 ns (20.9x) | 2,043 ns (22.4x) | 4,651 ns (51.1x) |
+| Spread | 4.5% | 3.9% | 3.9% | 2.1% | 4.7% |
+
+| Operation | gremlin.c | gremlin.zig | gremlin_go | protobuf-go |
+|---|---|---|---|---|
+| 🔨 Marshal | **532 ns** | 880 ns (1.7x) | 1,582 ns (3.0x) | 2,293 ns (4.3x) |
+| 📖 Unmarshal | **32.0 ns** | 116 ns (3.6x) | 203 ns (6.3x) | 3,706 ns (115.8x) |
+| 🎯 Lazy Read | **32.3 ns** | 117 ns (3.6x) | 219 ns (6.8x) | 3,735 ns (115.6x) |
+| 🔍 Deep Access | **91.0 ns** | 267 ns (2.9x) | 659 ns (7.2x) | 3,753 ns (41.2x) |
+| Spread | 4.5% | 6.9% | 2.3% | 2.4% |
+
+### 📜 golden_message, protobuf's `TestAllTypes`, 537 bytes
+
+| Operation | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb |
+|---|---|---|---|---|---|
+| 🔨 Marshal | **186 ns** | 202 ns (1.1x) | 682 ns (3.7x) | n/a | n/a |
+| 📖 Unmarshal | **285 ns** | 1,138 ns (4.0x) | 1,320 ns (4.6x) | n/a | n/a |
+| 🎯 Lazy Read | **279 ns** | 1,134 ns (4.1x) | 1,309 ns (4.7x) | n/a | n/a |
+| 🔍 Deep Access | **284 ns** | 1,138 ns (4.0x) | 1,316 ns (4.6x) | n/a | n/a |
+| Spread | 7.5% | 4.2% | 3.8% | n/a | n/a |
+
+- 🔨 **Marshal**: `_size` and encode a built message (others: their serialize).
+- 📖 **Unmarshal**: parse the bytes, touch no field.
+- 🎯 **Lazy Read**: parse, then read three root fields.
+- 🔍 **Deep Access**: parse, then follow one path down to the leaf.
+
+What they show: gremlin.c reads lazily, so Deep Access touches 5 of
+DeepNested's 38 messages while the others decode all 38. The speedups are
+those of reading part of a message, not of decoding all of it. protobuf C++
+also allocates on the heap while parsing (11 blocks per DeepNested here, 30
+with libstdc++), and its timings include that. On golden_message gremlin.c
+marshals the message built in code and the others the parsed file, and
+gremlin.c writes its repeated scalars packed, so fewer bytes. protobuf-c and
+nanopb cannot read golden_message, which has groups. gremlin.zig and
+gremlin_go run their own programs on their own copy of DeepNested (1409
+bytes); gremlin.zig's golden_message run overruns its buffer and is not
+run, gremlin_go's does other work and is not shown (see `bench/README.md`).
 
 ```bash
-cmake -S integration-test -B integration-test/build
-cmake --build integration-test/build --target benchmark
-./integration-test/build/benchmark 20000000
+brew install cmake pkgconf protobuf protobuf-c nanopb   # or apt, see bench/
+bench/run.sh                                    # 30 s per program and round, 5 rounds
 ```
 
-Benchmark builds use `-O3 -DNDEBUG -march=native -flto`, so results are
-machine- and compiler-dependent.
+Setup, fairness and the allocation counts are in [`bench/README.md`](bench/README.md).
 
 ## Repository Layout
 

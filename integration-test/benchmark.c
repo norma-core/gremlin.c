@@ -566,26 +566,29 @@ print_cpu_info(void)
  * DeepNested benchmarks
  * ======================================================================== */
 
-static int64_t
+static double
 bench_marshal_deep(const benchmark_DeepNested *msg, uint8_t *data, size_t cap,
 		   size_t iterations)
 {
+	/* _size each time, as the other libraries' serialize does. */
 	for (size_t i = 0; i < 100; i++) {
 		struct gremlin_writer w;
 		gremlin_writer_init(&w, data, cap);
+		if (benchmark_DeepNested_size(msg) > cap) abort();
 		benchmark_DeepNested_encode(msg, &w);
 	}
 	int64_t start = now_ns();
 	for (size_t i = 0; i < iterations; i++) {
 		struct gremlin_writer w;
 		gremlin_writer_init(&w, data, cap);
+		if (benchmark_DeepNested_size(msg) > cap) abort();
 		benchmark_DeepNested_encode(msg, &w);
 	}
 	int64_t end = now_ns();
-	return (end - start) / (int64_t)iterations;
+	return (double)(end - start) / (double)iterations;
 }
 
-static int64_t
+static double
 bench_unmarshal_deep(const uint8_t *data, size_t len, size_t iterations)
 {
 	benchmark_DeepNested_reader r;
@@ -593,14 +596,16 @@ bench_unmarshal_deep(const uint8_t *data, size_t len, size_t iterations)
 		(void)benchmark_DeepNested_reader_init(&r, data, len);
 	}
 	int64_t start = now_ns();
+	volatile enum gremlin_error sink = GREMLIN_OK;
 	for (size_t i = 0; i < iterations; i++) {
-		(void)benchmark_DeepNested_reader_init(&r, data, len);
+		sink = benchmark_DeepNested_reader_init(&r, data, len);
 	}
 	int64_t end = now_ns();
-	return (end - start) / (int64_t)iterations;
+	(void)sink;
+	return (double)(end - start) / (double)iterations;
 }
 
-static int64_t
+static double
 bench_lazy_deep(const uint8_t *data, size_t len, size_t iterations)
 {
 	benchmark_DeepNested_reader r;
@@ -622,10 +627,10 @@ bench_lazy_deep(const uint8_t *data, size_t len, size_t iterations)
 	}
 	int64_t end = now_ns();
 	(void)root_id_sink; (void)active_sink; (void)name_sink;
-	return (end - start) / (int64_t)iterations;
+	return (double)(end - start) / (double)iterations;
 }
 
-static int64_t
+static double
 bench_deep_access_deep(const uint8_t *data, size_t len, size_t iterations)
 {
 	benchmark_DeepNested_reader r;
@@ -661,35 +666,41 @@ bench_deep_access_deep(const uint8_t *data, size_t len, size_t iterations)
 	}
 	int64_t end = now_ns();
 	(void)sink;
-	return (end - start) / (int64_t)iterations;
+	return (double)(end - start) / (double)iterations;
 }
 
 /* ========================================================================
  * Golden TestAllTypes benchmarks
  * ======================================================================== */
 
-static int64_t
+static double
 bench_marshal_golden(protobuf_unittest_TestAllTypes *msg,
 		     uint8_t *data, size_t cap, size_t iterations)
 {
+	volatile uint8_t sink = 0;
+	/* The update changes field sizes, so _size has to run before every encode. */
 	for (int32_t i = 0; i < 100; i++) {
 		update_golden_message(msg, i);
 		struct gremlin_writer w;
 		gremlin_writer_init(&w, data, cap);
+		if (protobuf_unittest_TestAllTypes_size(msg) > cap) abort();
 		protobuf_unittest_TestAllTypes_encode(msg, &w);
 	}
 	int64_t start = now_ns();
 	for (size_t i = 0; i < iterations; i++) {
-		update_golden_message(msg, (int32_t)i);
+		update_golden_message(msg, (int32_t)(i & 1023));
 		struct gremlin_writer w;
 		gremlin_writer_init(&w, data, cap);
+		if (protobuf_unittest_TestAllTypes_size(msg) > cap) abort();
 		protobuf_unittest_TestAllTypes_encode(msg, &w);
+		sink = data[w.offset - 1];
 	}
 	int64_t end = now_ns();
-	return (end - start) / (int64_t)iterations;
+	(void)sink;
+	return (double)(end - start) / (double)iterations;
 }
 
-static int64_t
+static double
 bench_unmarshal_golden(const uint8_t *data, size_t len, size_t iterations)
 {
 	protobuf_unittest_TestAllTypes_reader r;
@@ -697,14 +708,16 @@ bench_unmarshal_golden(const uint8_t *data, size_t len, size_t iterations)
 		(void)protobuf_unittest_TestAllTypes_reader_init(&r, data, len);
 	}
 	int64_t start = now_ns();
+	volatile enum gremlin_error sink = GREMLIN_OK;
 	for (size_t i = 0; i < iterations; i++) {
-		(void)protobuf_unittest_TestAllTypes_reader_init(&r, data, len);
+		sink = protobuf_unittest_TestAllTypes_reader_init(&r, data, len);
 	}
 	int64_t end = now_ns();
-	return (end - start) / (int64_t)iterations;
+	(void)sink;
+	return (double)(end - start) / (double)iterations;
 }
 
-static int64_t
+static double
 bench_lazy_golden(const uint8_t *data, size_t len, size_t iterations)
 {
 	protobuf_unittest_TestAllTypes_reader r;
@@ -726,10 +739,10 @@ bench_lazy_golden(const uint8_t *data, size_t len, size_t iterations)
 	}
 	int64_t end = now_ns();
 	(void)i32_sink; (void)i64_sink; (void)str_sink;
-	return (end - start) / (int64_t)iterations;
+	return (double)(end - start) / (double)iterations;
 }
 
-static int64_t
+static double
 bench_deep_access_golden(const uint8_t *data, size_t len, size_t iterations)
 {
 	protobuf_unittest_TestAllTypes_reader r;
@@ -763,7 +776,7 @@ bench_deep_access_golden(const uint8_t *data, size_t len, size_t iterations)
 	}
 	int64_t end = now_ns();
 	(void)sink; (void)str_sink;
-	return (end - start) / (int64_t)iterations;
+	return (double)(end - start) / (double)iterations;
 }
 
 /* ========================================================================
@@ -800,24 +813,41 @@ main(int argc, char **argv)
 	struct gremlin_writer dw;
 	gremlin_writer_init(&dw, deep_buf, deep_size);
 	benchmark_DeepNested_encode(&deep, &dw);
+	benchmark_DeepNested_reader dr;
+	if (benchmark_DeepNested_reader_init(&dr, deep_buf, deep_size) != GREMLIN_OK) {
+		fprintf(stderr, "cannot read back deep_nested\n");
+		return 1;
+	}
+	/* bench/run.sh passes the bytes the other libraries read; they must be these. */
+	if (argc >= 3) {
+		FILE *f = fopen(argv[2], "rb");
+		uint8_t *want = malloc(deep_size + 1);
+		size_t got = f && want ? fread(want, 1, deep_size + 1, f) : 0;
+		if (f) fclose(f);
+		if (got != deep_size || memcmp(want, deep_buf, deep_size) != 0) {
+			fprintf(stderr, "deep_nested differs from %s\n", argv[2]);
+			return 1;
+		}
+		free(want);
+	}
 
 	fprintf(stderr, "Message Size: %zu bytes\n\n", deep_size);
 
 	fprintf(stderr, "Marshal (Serialize):\n");
-	int64_t t = bench_marshal_deep(&deep, deep_buf, deep_size, iterations);
-	fprintf(stderr, "  %ld ns/op\n\n", (long)t);
+	double t = bench_marshal_deep(&deep, deep_buf, deep_size, iterations);
+	fprintf(stderr, "  %.1f ns/op\n\n", t);
 
 	fprintf(stderr, "Unmarshal (Deserialize):\n");
 	t = bench_unmarshal_deep(deep_buf, deep_size, iterations);
-	fprintf(stderr, "  %ld ns/op\n\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n\n", t);
 
 	fprintf(stderr, "Unmarshal + Root Access (Lazy Parsing):\n");
 	t = bench_lazy_deep(deep_buf, deep_size, iterations);
-	fprintf(stderr, "  %ld ns/op\n\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n\n", t);
 
 	fprintf(stderr, "Full Deep Access (All Nested Fields):\n");
 	t = bench_deep_access_deep(deep_buf, deep_size, iterations);
-	fprintf(stderr, "  %ld ns/op\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n", t);
 
 	free(deep_buf);
 	fprintf(stderr, "\n");
@@ -828,28 +858,34 @@ main(int argc, char **argv)
 
 	size_t golden_len;
 	uint8_t *golden = test_load_binary("golden_message", &golden_len);
+	protobuf_unittest_TestAllTypes_reader gr;
+	if (protobuf_unittest_TestAllTypes_reader_init(&gr, golden, golden_len) != GREMLIN_OK) {
+		fprintf(stderr, "cannot read golden_message\n");
+		return 1;
+	}
 	fprintf(stderr, "Message Size: %zu bytes\n\n", golden_len);
 
 	protobuf_unittest_TestAllTypes msg = create_golden_message();
-	size_t golden_cap = protobuf_unittest_TestAllTypes_size(&msg);
+	/* Room for the updated values, which encode longer than the initial ones. */
+	size_t golden_cap = protobuf_unittest_TestAllTypes_size(&msg) + 64;
 	uint8_t *golden_buf = malloc(golden_cap);
 	if (!golden_buf) { fprintf(stderr, "oom\n"); return 1; }
 
 	fprintf(stderr, "Marshal (Serialize):\n");
 	t = bench_marshal_golden(&msg, golden_buf, golden_cap, iterations);
-	fprintf(stderr, "  %ld ns/op\n\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n\n", t);
 
 	fprintf(stderr, "Unmarshal (Deserialize):\n");
 	t = bench_unmarshal_golden(golden, golden_len, iterations);
-	fprintf(stderr, "  %ld ns/op\n\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n\n", t);
 
 	fprintf(stderr, "Unmarshal + Root Access (Lazy Parsing):\n");
 	t = bench_lazy_golden(golden, golden_len, iterations);
-	fprintf(stderr, "  %ld ns/op\n\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n\n", t);
 
 	fprintf(stderr, "Deep Access (Including Nested Messages):\n");
 	t = bench_deep_access_golden(golden, golden_len, iterations);
-	fprintf(stderr, "  %ld ns/op\n", (long)t);
+	fprintf(stderr, "  %.1f ns/op\n", t);
 
 	free(golden_buf);
 	free(golden);
