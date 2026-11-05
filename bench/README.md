@@ -1,7 +1,8 @@
 # Benchmarks
 
-gremlin.c against Google's C++ protobuf, upb, protobuf-c and nanopb on the
-same bytes. The results are in the top-level [README](../README.md#benchmarks).
+gremlin.c against Google's C++ protobuf, upb, protobuf-c, nanopb and prost
+(Rust) on the same bytes. The results are in the top-level
+[README](../README.md#benchmarks).
 
 ## Quick Start
 
@@ -51,6 +52,10 @@ apt install cmake g++ pkg-config libprotobuf-dev protobuf-compiler \
     libprotobuf-c-dev protobuf-c-compiler nanopb                 # Debian, Ubuntu
 ```
 
+prost is built by `cargo` when it is on `PATH` (`bench/prost`, versions
+pinned in its `Cargo.lock`), with the protoc CMake found. Rust from
+[rustup](https://rustup.rs).
+
 A library that is not found is skipped and its column reads n/a. Ubuntu
 24.04's protobuf (3.21) has no upb, so upb is n/a there. nanopb's allocator
 is set at compile time, so CMake builds its runtime from source: fetched from
@@ -58,9 +63,9 @@ GitHub at the installed generator's version, or a checkout given as
 `-DNANOPB_SOURCE_DIR=<dir>`; without either, nanopb is n/a.
 
 macOS and Linux only: the scripts are POSIX sh, the programs time with
-`clock_gettime`, and `allocs.sh` counts through dyld or glibc. gremlin.h
-and the generated headers build with MSVC, but this benchmark does not
-run on Windows.
+`clock_gettime` (prost with `Instant`), and `allocs.sh` counts through dyld
+or glibc. gremlin.h and the generated headers build with MSVC, but this
+benchmark does not run on Windows.
 
 ## Benchmark Structure
 
@@ -90,6 +95,7 @@ Four operations on each:
 | `bench_upb.c` | upb |
 | `bench_protobuf_c.c` | protobuf-c |
 | `bench_nanopb.c` | nanopb, with `benchmark.options` and `nanopb_alloc.h` |
+| `prost/src/main.rs` | prost, its own Cargo crate |
 
 ## Fairness
 
@@ -97,17 +103,20 @@ What the numbers do and do not show:
 
 - **Deep Access is partial access.** It follows one path down DeepNested,
   5 of its 38 messages. gremlin.c parses lazily and touches only those 5;
-  the others decode all 38 up front. The speedups are those of reading part
-  of a message, not of decoding all of it. The same holds, more so, for
-  Unmarshal and Lazy Read.
+  the others, prost included, decode all 38 up front. The speedups are
+  those of reading part of a message, not of decoding all of it. The same
+  holds, more so, for Unmarshal and Lazy Read.
 - **Same build for all.** Every benchmark is `-O3 -march=native` with the
   LTO the gremlin target uses (`-flto=thin` under LLVM Clang, `-flto` under
   GCC and Apple clang). protobuf and upb are linked as installed, so
-  their library code is built however the package was.
+  their library code is built however the package was. prost is built by
+  cargo with `lto = true`, `codegen-units = 1` and `-C target-cpu=native`,
+  the prost crate included.
 - **Same input bytes.** DeepNested comes from `deep_nested.txtpb` through
   protoc. gremlin.c builds the message in code and checks that its encoding
-  is that file byte for byte; nanopb checks the same of its own encoding.
-  Every C and C++ program checks that it parses its input before timing it.
+  is that file byte for byte; nanopb and prost check the same of their own
+  encoding. Every C, C++ and Rust program checks that it parses its input
+  before timing it.
 - **Marshal.** Each program marshals the same values. DeepNested is
   marshalled unchanged; on golden_message the five fields each program
   changes go round 0 to 1023, so the encoded size repeats every 1024
@@ -121,22 +130,23 @@ What the numbers do and do not show:
   block, protobuf-c and nanopb into a bump allocator reset before every
   parse. C++ still allocates on the heap: DeepNested's strings longer than
   its short-string buffer (11 of them past libc++'s 22 bytes, 30 past
-  libstdc++'s 15), and on Linux 9 blocks for golden_message. `bench/allocs.sh`
-  counts heap allocations per operation:
+  libstdc++'s 15), and on Linux 9 blocks for golden_message. prost has no
+  arena: every string, bytes field and repeated field it decodes is its own
+  heap block. `bench/allocs.sh` counts heap allocations per operation:
 
-  | per parse | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb |
-  |---|---|---|---|---|---|
-  | DeepNested, macOS (libc++) | 0 | 11 | 0 | 0 | 0 |
-  | DeepNested, Linux (libstdc++) | 0 | 30 | n/a | 0 | 0 |
-  | golden_message, macOS | 0 | 0 | 0 | n/a | n/a |
-  | golden_message, Linux | 0 | 9 | n/a | n/a | n/a |
+  | per parse | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb | prost |
+  |---|---|---|---|---|---|---|
+  | DeepNested, macOS (libc++) | 0 | 11 | 0 | 0 | 0 | 98 |
+  | DeepNested, Linux (libstdc++) | 0 | 30 | n/a | 0 | 0 | not run |
+  | golden_message, macOS | 0 | 0 | 0 | n/a | n/a | 47 |
+  | golden_message, Linux | 0 | 9 | n/a | n/a | n/a | not run |
 
-  macOS 26.6 with protobuf 36.2; Linux is Ubuntu 24.04 with its protobuf
-  3.21, which has no upb.
+  macOS 26.6 with protobuf 36.2 and prost 0.14.4; Linux is Ubuntu 24.04
+  with its protobuf 3.21, which has no upb.
 
-  Marshal allocates nothing on the heap in any of these five; gremlin_go's
-  and protobuf-go's return a new slice per call. The C++ timings include those
-  allocations, as they would in use.
+  Marshal allocates nothing on the heap in any of these six; gremlin_go's
+  and protobuf-go's return a new slice per call. The C++ and prost timings
+  include those allocations, as they would in use.
 - **nanopb** is set up as on a device: strings and scalar arrays inline with
   a fixed `max_size` / `max_count`, repeated messages through pointers.
   Fully static, DeepNested would be a ~100 KiB struct cleared on every
@@ -149,7 +159,8 @@ What the numbers do and do not show:
   `golden_message` gremlin.c writes fewer bytes. Both parse to the same
   message.
 - **Teardown.** C++ and upb destroy their arena every iteration, inside the
-  timing, which frees C++'s heap strings; protobuf-c and nanopb reset their
+  timing, which frees C++'s heap strings, and prost drops its message
+  there, which frees its 98 or 47 blocks; protobuf-c and nanopb reset their
   bump pointer, as on a device, with nothing to free.
 - **Iterations.** A program runs all its operations at one iteration count,
   sized so the whole program takes about the given time; at 30 s its

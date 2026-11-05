@@ -12,7 +12,7 @@ GOLDEN=$ROOT/integration-test/binaries/golden_message
 
 cmake -S "$ROOT/bench" -B "$B" -DCMAKE_BUILD_TYPE=Release >/dev/null
 # A library no longer found must not leave its old program behind.
-rm -f "$B/bench_cpp" "$B/bench_upb" "$B/bench_protobuf_c" "$B/bench_nanopb"
+rm -f "$B/bench_cpp" "$B/bench_upb" "$B/bench_protobuf_c" "$B/bench_nanopb" "$B/bench_prost"
 cmake --build "$B" -j4 --target bench_all >/dev/null
 
 if [ "$(uname)" = Darwin ]; then
@@ -43,12 +43,12 @@ b=$(count "$B/gremlin/benchmark" 2000)
 echo "gremlin.c: $((b - a)) allocations over 8000 extra operations"
 echo
 
-echo "| Operation | protobuf C++ | upb | protobuf-c | nanopb |"
-echo "|---|---|---|---|---|"
+echo "| Operation | protobuf C++ | upb | protobuf-c | nanopb | prost |"
+echo "|---|---|---|---|---|---|"
 for w in deep golden; do
 	for op in marshal unmarshal lazy deep; do
 		line="| $w $op |"
-		for p in cpp upb protobuf_c nanopb; do
+		for p in cpp upb protobuf_c nanopb prost; do
 			bin=$B/bench_$p
 			if [ ! -x "$bin" ]; then
 				c=n/a
