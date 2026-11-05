@@ -61,7 +61,7 @@ A typical codegen run runs these passes in order on a
 | Stage | Reads | Writes | Purpose |
 | --- | --- | --- | --- |
 | 🏷️ `gremlinc_assign_c_names` | `messages[].scoped_name`, `enums[].scoped_name` | `<descriptor>.c_name` | Flat-join each scoped name (`foo.bar.A.B` → `foo_bar_A_B`), pass through the keyword mangler (`int` → `int_`) and flat-join collision resolver (`_1`, `_2`, …). Must run before any emit so field cross-references can read `target->c_name` directly. |
-| 📤 `gremlinc_emit_message_forward` | `m->c_name` | writer | Emit `typedef struct M M;` + reader forward decls + `static inline` prototypes for every message. Must precede any body so mutual-recursive field types can be referenced. |
+| 📤 `gremlinc_emit_message_forward` | `m->c_name` | writer | Emit `typedef struct M M;` + reader forward decls + `static inline` prototypes for the messages used before their definition (`predeclare`), and mark them so their definitions are a plain `struct M {...};`, which C99 needs. Must precede any body. |
 | ✍️ `gremlinc_emit_enum` / `gremlinc_emit_message` | full descriptor | writer | Walk the file's `enums[]` and `messages[]` in descriptor order, dispatching each field to the appropriate per-family emitter (see below). Output layout: typedef → `_size` → `_encode` → reader struct + `_reader_init` → one `_reader_get_<field>` per field. |
 
 Each pass is idempotent after its prerequisites; the context carries

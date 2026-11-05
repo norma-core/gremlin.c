@@ -101,6 +101,65 @@ caller_encode_list(void)
 	return buf[end - 1];
 }
 
+/*@ assigns \nothing;
+    ensures \result == 13;
+*/
+size_t
+caller_size_unpacked(void)
+{
+	int32_t ua[2] = { 1, 2 };
+	uint64_t ub[1] = { 7 };
+	wpw_Packs m = { .ua = ua, .ua_count = 2, .ub = ub, .ub_count = 1 };
+
+	return wpw_Packs_size(&m);
+}
+
+/*@ assigns \nothing;
+    ensures \result == 14;
+*/
+size_t
+caller_size_unpacks(void)
+{
+	wpw_Kind k[2] = { wpw_Kind_KIND_ONE, wpw_Kind_KIND_NONE };
+	bool b[1] = { true };
+	uint64_t u[1] = { 300 };
+	uint32_t x[1] = { 7 };
+	wpw_Unpacks m = { .k = k, .k_count = 2, .b = b, .b_count = 1,
+			  .u = u, .u_count = 1, .x = x, .x_count = 1 };
+
+	return wpw_Unpacks_size(&m);
+}
+
+/*@ assigns \nothing;
+    ensures \result == 10;
+*/
+size_t
+caller_size_packed_ones(void)
+{
+	uint32_t a[1] = { 300 };
+	uint32_t b[1] = { 7 };
+	wpw_PackedOnes m = { .a = a, .a_count = 1, .b = b, .b_count = 1 };
+
+	return wpw_PackedOnes_size(&m);
+}
+
+/*@ assigns \nothing; */
+uint8_t
+caller_encode_unpacks(void)
+{
+	wpw_Kind k[2] = { wpw_Kind_KIND_ONE, wpw_Kind_KIND_NONE };
+	bool b[1] = { true };
+	uint64_t u[1] = { 300 };
+	uint32_t x[1] = { 7 };
+	wpw_Unpacks m = { .k = k, .k_count = 2, .b = b, .b_count = 1,
+			  .u = u, .u_count = 1, .x = x, .x_count = 1 };
+	uint8_t buf[14];
+
+	wpw_Unpacks_size(&m);
+	size_t end = wpw_Unpacks_encode_at(&m, buf, 0);
+	return buf[end - 1];
+}
+
 /*@ assigns \nothing; */
 uint8_t
 caller_encode_strings(void)

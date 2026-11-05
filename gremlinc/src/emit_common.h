@@ -321,8 +321,8 @@ enum gremlinp_parsing_error	gremlinc_map_emit_getter(struct gremlinc_writer *w,
 /*
  * Repeated-scalar family — `repeated <numeric>`, `repeated bool`,
  * `repeated <enum>`.  Supports both packed and unpacked wire forms.
- * Writer emits unpacked for count==1 (saves length byte), packed for
- * count>=2.  Reader rejects mixed packed/unpacked within a single
+ * Writer follows the field's `packing` (descriptors/src/build.c).
+ * Reader rejects mixed packed/unpacked within a single
  * field (first occurrence sets `<fname>_packed`, subsequent occurrences
  * must match — mismatch → GREMLIN_ERROR_INVALID_WIRE_TYPE).
  */
@@ -363,7 +363,8 @@ enum gremlinc_espec_hook_kind {
 	GREMLINC_HOOK_REPMSG_ENCODE_CHILD,
 	GREMLINC_HOOK_PACKED_PAYLOAD,
 	GREMLINC_HOOK_PACKED_ELEMS,
-	GREMLINC_HOOK_PACKED_ELEM
+	GREMLINC_HOOK_PACKED_ELEM,
+	GREMLINC_HOOK_UNPACKED_ELEMS
 };
 
 enum gremlinp_parsing_error	gremlinc_espec_begin(struct gremlinc_encode_plan *plan,

@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "gremlind/arena.h"
+#include "gremlind/build.h"
 #include "gremlind/extend.h"
 #include "gremlind/name.h"
 #include "gremlind/nodes.h"
@@ -209,6 +210,9 @@ apply_extend(struct gremlind_arena *arena,
 	for (size_t i = old_count; i < new_count; i++) {
 		merged[i].origin_file = origin_file;
 		merged[i].origin_scope = persistent_scope;
+		/* Packing follows the extending file, not the extended one. */
+		merged[i].packing = gremlind_field_packing(origin_file,
+		    gremlind_field_packed_option(buf, &merged[i].parsed.options));
 	}
 
 	target->fields.items = merged;

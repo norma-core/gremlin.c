@@ -113,6 +113,12 @@ struct gremlind_type_ref {
 	} u;
 };
 
+enum gremlind_packing {
+	GREMLIND_PACKING_AUTO,		/* packed from two elements, one goes unpacked */
+	GREMLIND_PACKING_PACKED,
+	GREMLIND_PACKING_EXPANDED
+};
+
 struct gremlind_field {
 	struct gremlinp_field_parse_result	parsed;
 	struct gremlind_type_ref		type;		/* set by gremlind_resolve_type_refs */
@@ -126,6 +132,9 @@ struct gremlind_field {
 	 */
 	bool					has_default;
 	struct gremlinp_const_parse_result	default_value;
+	/* How a repeated scalar goes on the wire: `[packed]`, else unpacked
+	 * for proto2 and packed from two elements for proto3 and editions. */
+	enum gremlind_packing			packing;
 	/*
 	 * For fields synthesized by `gremlind_propagate_extends` from an
 	 * `extend T { ... }` block, `origin_file` points at the file that
@@ -174,6 +183,8 @@ struct gremlind_message {
 	const char				*c_name;
 	/* The reader's ACSL predicate as mangled, NULL until the message is emitted. */
 	const char				*c_reader_ok;
+	/* Its typedefs went out ahead of it, so the definitions must not repeat them. */
+	bool					c_predeclared;
 };
 
 struct gremlind_messages {

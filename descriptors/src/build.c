@@ -104,9 +104,9 @@ static enum gremlinp_parsing_error fill_message(struct gremlind_arena *arena,
  * extracts each `(name, value)` pair instead of just counting.
  */
 static bool
-extract_default_option(const struct gremlinp_parser_buffer *orig,
-		       const struct gremlinp_option_list_result *opts,
-		       struct gremlinp_const_parse_result *out)
+extract_option(const struct gremlinp_parser_buffer *orig,
+	       const struct gremlinp_option_list_result *opts,
+	       const char *name, struct gremlinp_const_parse_result *out)
 {
 	if (opts->count == 0) return false;
 
@@ -121,8 +121,8 @@ extract_default_option(const struct gremlinp_parser_buffer *orig,
 		struct gremlinp_option_item_result item = gremlinp_option_item_parse(&b);
 		if (item.error != GREMLINP_OK) return false;
 
-		if (item.name_length == 7 &&
-		    memcmp(item.name_start, "default", 7) == 0) {
+		if (item.name_length == strlen(name) &&
+		    memcmp(item.name_start, name, item.name_length) == 0) {
 			*out = item.value;
 			return true;
 		}
@@ -130,6 +130,57 @@ extract_default_option(const struct gremlinp_parser_buffer *orig,
 		if (gremlinp_parser_buffer_skip_spaces(&b) != GREMLINP_OK) return false;
 		if (gremlinp_parser_buffer_check_and_shift(&b, ']')) return false;
 		if (!gremlinp_parser_buffer_check_and_shift(&b, ',')) return false;
+	}
+}
+
+static bool
+extract_default_option(const struct gremlinp_parser_buffer *orig,
+		       const struct gremlinp_option_list_result *opts,
+		       struct gremlinp_const_parse_result *out)
+{
+	return extract_option(orig, opts, "default", out);
+}
+
+static bool
+span_is(const char *start, size_t len, const char *word)
+{
+	return len == strlen(word) && memcmp(start, word, len) == 0;
+}
+
+int
+gremlind_field_packed_option(const struct gremlinp_parser_buffer *buf,
+			     const struct gremlinp_option_list_result *opts)
+{
+	struct gremlinp_const_parse_result v;
+	if (!extract_option(buf, opts, "packed", &v) || v.kind != GREMLINP_CONST_IDENTIFIER)
+		return -1;
+	if (span_is(v.u.span.start, v.u.span.length, "true")) return 1;
+	if (span_is(v.u.span.start, v.u.span.length, "false")) return 0;
+	return -1;
+}
+
+enum gremlind_packing
+gremlind_field_packing(const struct gremlind_file *file, int opt)
+{
+	if (opt >= 0) return opt == 1 ? GREMLIND_PACKING_PACKED : GREMLIND_PACKING_EXPANDED;
+	if (file->edition.present ||
+	    (file->syntax.present && file->syntax.value.version_length == 6 &&
+	     file->syntax.value.version_start[5] == '3'))
+		return GREMLIND_PACKING_AUTO;
+	return GREMLIND_PACKING_EXPANDED;
+}
+
+/* After the whole file, once its syntax or edition is known. */
+static void
+resolve_packing(struct gremlind_file *file, const struct gremlinp_parser_buffer *buf)
+{
+	for (size_t i = 0; i < file->messages.count; i++) {
+		struct gremlind_message *m = &file->messages.items[i];
+		for (size_t j = 0; j < m->fields.count; j++) {
+			struct gremlind_field *f = &m->fields.items[j];
+			f->packing = gremlind_field_packing(file,
+			    gremlind_field_packed_option(buf, &f->parsed.options));
+		}
 	}
 }
 
@@ -276,6 +327,7 @@ fill_message(struct gremlind_arena *arena, struct gremlinp_parser_buffer *buf,
 	/* The arena is not zeroed; the naming passes set these. */
 	out->c_name = NULL;
 	out->c_reader_ok = NULL;
+	out->c_predeclared = false;
 
 	/* Local count of this message's own fields (not recursive).  Oneof
 	 * entries contribute their inner fields — oneof semantics are
@@ -523,6 +575,7 @@ gremlind_build_file(struct gremlind_arena *arena, struct gremlinp_parser_buffer 
 		r.error_offset = buf->offset;
 		return r;
 	}
+	resolve_packing(file, buf);
 
 	r.file = file;
 	return r;

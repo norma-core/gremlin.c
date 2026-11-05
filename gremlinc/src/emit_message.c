@@ -641,7 +641,9 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	}
 
 	/* ---- writer struct ---- */
-	W("typedef struct "); W(tname); W(" {\n");
+	/* A repeated typedef is C11; C99 rejects it. */
+	if (m->c_predeclared) { W("struct "); W(tname); W(" {\n"); }
+	else { W("typedef struct "); W(tname); W(" {\n"); }
 	if (m->fields.count == 0) {
 		/* C forbids empty structs; emit a placeholder. */
 		W("\tchar _empty;\n");
@@ -685,7 +687,8 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	 * `_encode`. Placed at the end so designated-initializer callers
 	 * (`.field = x`) still compile and default-zero the cache. */
 	W("\tsize_t\t_size;\n");
-	W("} "); W(tname); W(";\n\n");
+	if (m->c_predeclared) W("};\n\n");
+	else { W("} "); W(tname); W(";\n\n"); }
 
 	/* Inline cached-size accessor. Body is trivial `return m->_size`
 	 * but needs the full struct to be visible — so it's defined here,
@@ -802,7 +805,8 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	 * the "absent on wire" vs "set to zero" ambiguity that sentinel
 	 * defaults can't express. */
 	if (decl_start != NULL) *decl_start = w->offset;
-	W("typedef struct "); W(reader_ty); W(" {\n");
+	if (m->c_predeclared) { W("struct "); W(reader_ty); W(" {\n"); }
+	else { W("typedef struct "); W(reader_ty); W(" {\n"); }
 	W("\tconst uint8_t\t*src;\n");
 	W("\tsize_t\t\t src_len;\n");
 	if (m->fields.count > 0) {
@@ -831,7 +835,8 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		if (rt == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 		W("\t"); W(rt); W("\t"); W(fnames[i]); W(";\n");
 	}
-	W("} "); W(reader_ty); W(";\n\n");
+	if (m->c_predeclared) W("};\n\n");
+	else { W("} "); W(reader_ty); W(";\n\n"); }
 
 	/* Every kept span lies in s[0 .. n). Init's loop carries the groups with
 	 * `src` itself, so a store to `r` does not have to be framed for `r->src`. */

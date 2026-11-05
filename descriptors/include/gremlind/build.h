@@ -37,4 +37,11 @@ struct gremlind_build_result {
 struct gremlind_build_result	gremlind_build_file(struct gremlind_arena *arena,
 						    struct gremlinp_parser_buffer *buf);
 
+/* A field's `[packed = ...]`: -1 when absent, else 0 or 1. */
+int	gremlind_field_packed_option(const struct gremlinp_parser_buffer *buf,
+				     const struct gremlinp_option_list_result *opts);
+
+/* Packing of a repeated scalar in `file` whose `[packed]` is `opt`. */
+enum gremlind_packing	gremlind_field_packing(const struct gremlind_file *file, int opt);
+
 #endif /* !_GREMLIND_BUILD_H_ */

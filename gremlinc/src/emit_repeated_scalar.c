@@ -17,9 +17,10 @@
  *   - Unpacked: one tag + value triple per element.  Reader expects
  *               ALL occurrences to be unpacked if the first was.
  *
- * Writer heuristic: emit packed when count >= 2 (saves per-element
- * tag byte); emit unpacked when count == 1 (saves the length-prefix
- * byte).  Skip entirely when count == 0.
+ * Writer: by the field's `packing`.  `[packed]` decides when given;
+ * otherwise proto2 goes unpacked, and proto3 and editions pack when
+ * count >= 2 (saves per-element tag byte) and go unpacked when
+ * count == 1 (saves the length-prefix byte).  Skip when count == 0.
  *
  * Reader caches: count, first_tag_offset (points AT the first tag
  * byte, before consumption), and a packed/unpacked flag.  The
@@ -230,6 +231,33 @@ emit_elem_decode(struct gremlinc_writer *w, const struct rs_elem *e,
  * Public API
  * ------------------------------------------------------------------------ */
 
+/* `size_t _payload`: the elements' bytes without their tags. */
+static enum gremlinp_parsing_error
+emit_payload(struct gremlinc_writer *w, const struct rs_elem *e, const char *fname,
+	     const struct gremlinc_espec *sp, size_t fi)
+{
+	enum gremlinp_parsing_error err;
+	if (!e->is_enum && e->wire == WT_FIXED32_NUM) {
+		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 4;\n");
+		return GREMLINP_OK;
+	}
+	if (!e->is_enum && e->wire == WT_FIXED64_NUM) {
+		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 8;\n");
+		return GREMLINP_OK;
+	}
+	W("\t\tsize_t _payload = 0;\n");
+	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_PAYLOAD))) return err;
+	W("\t\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
+	W("\t\t\t_payload += ");
+	{
+		char ref[128];
+		snprintf(ref, sizeof ref, "m->%s[_i]", fname);
+		if ((err = emit_elem_wire_size_expr(w, e, ref)) != GREMLINP_OK) return err;
+	}
+	W(";\n\t\t}\n");
+	return GREMLINP_OK;
+}
+
 enum gremlinp_parsing_error
 gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 					 const struct gremlind_field *f,
@@ -246,33 +274,26 @@ gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 	unsigned packed_tag_bytes   = (unsigned)gremlin_varint_size(packed_tag);
 	unsigned unpacked_tag_bytes = (unsigned)gremlin_varint_size(unpacked_tag);
 
-	W("\tif (m->"); W(fname); W("_count == 1) {\n");
-	W("\t\ts += "); WI((int32_t)unpacked_tag_bytes); W(" + ");
-	{
-		char ref[128];
-		snprintf(ref, sizeof ref, "m->%s[0]", fname);
-		if ((err = emit_elem_wire_size_expr(w, &e, ref)) != GREMLINP_OK) return err;
-	}
-	W(";\n\t} else if (m->"); W(fname); W("_count > 1) {\n");
-	/* Packed payload length */
-	if (!e.is_enum && e.wire == WT_FIXED32_NUM) {
-		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 4;\n");
-	} else if (!e.is_enum && e.wire == WT_FIXED64_NUM) {
-		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 8;\n");
-	} else {
-		W("\t\tsize_t _payload = 0;\n");
-		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_PAYLOAD))) return err;
-		W("\t\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
-		W("\t\t\t_payload += ");
+	if (f->packing == GREMLIND_PACKING_AUTO) {
+		W("\tif (m->"); W(fname); W("_count == 1) {\n");
+		W("\t\ts += "); WI((int32_t)unpacked_tag_bytes); W(" + ");
 		{
 			char ref[128];
-			snprintf(ref, sizeof ref, "m->%s[_i]", fname);
+			snprintf(ref, sizeof ref, "m->%s[0]", fname);
 			if ((err = emit_elem_wire_size_expr(w, &e, ref)) != GREMLINP_OK) return err;
 		}
-		W(";\n\t\t}\n");
+		W(";\n\t} else if (m->"); W(fname); W("_count > 1) {\n");
+	} else {
+		W("\tif (m->"); W(fname); W("_count > 0) {\n");
 	}
-	W("\t\ts += "); WI((int32_t)packed_tag_bytes);
-	W(" + gremlin_varint_size(_payload) + _payload;\n");
+	if ((err = emit_payload(w, &e, fname, sp, fi)) != GREMLINP_OK) return err;
+	if (f->packing == GREMLIND_PACKING_EXPANDED) {
+		W("\t\ts += m->"); W(fname); W("_count * "); WI((int32_t)unpacked_tag_bytes);
+		W(" + _payload;\n");
+	} else {
+		W("\t\ts += "); WI((int32_t)packed_tag_bytes);
+		W(" + gremlin_varint_size(_payload) + _payload;\n");
+	}
 	W("\t}\n");
 	return GREMLINP_OK;
 }
@@ -291,31 +312,32 @@ gremlinc_repeated_scalar_emit_encode_field(struct gremlinc_writer *w,
 	uint32_t packed_tag = ((uint32_t)f->parsed.index << 3) | WT_LEN_PREFIX_NUM;
 	uint32_t unpacked_tag = ((uint32_t)f->parsed.index << 3) | e.wire;
 
-	W("\tif (m->"); W(fname); W("_count == 1) {\n");
-	W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)unpacked_tag); W("u);\n");
-	{
-		char ref[128];
-		snprintf(ref, sizeof ref, "m->%s[0]", fname);
-		if ((err = emit_elem_encode(w, &e, ref)) != GREMLINP_OK) return err;
-	}
-	W("\t} else if (m->"); W(fname); W("_count > 1) {\n");
-	/* Packed: re-compute payload length, then emit tag + len + elements. */
-	if (!e.is_enum && e.wire == WT_FIXED32_NUM) {
-		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 4;\n");
-	} else if (!e.is_enum && e.wire == WT_FIXED64_NUM) {
-		W("\t\tsize_t _payload = m->"); W(fname); W("_count * 8;\n");
-	} else {
-		W("\t\tsize_t _payload = 0;\n");
-		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_PAYLOAD))) return err;
-		W("\t\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
-		W("\t\t\t_payload += ");
+	if (f->packing == GREMLIND_PACKING_EXPANDED) {
+		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_UNPACKED_ELEMS))) return err;
+		W("\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
+		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_ELEM))) return err;
+		W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)unpacked_tag); W("u);\n");
 		{
 			char ref[128];
 			snprintf(ref, sizeof ref, "m->%s[_i]", fname);
-			if ((err = emit_elem_wire_size_expr(w, &e, ref)) != GREMLINP_OK) return err;
+			if ((err = emit_elem_encode(w, &e, ref)) != GREMLINP_OK) return err;
 		}
-		W(";\n\t\t}\n");
+		W("\t}\n");
+		return GREMLINP_OK;
 	}
+	if (f->packing == GREMLIND_PACKING_AUTO) {
+		W("\tif (m->"); W(fname); W("_count == 1) {\n");
+		W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)unpacked_tag); W("u);\n");
+		{
+			char ref[128];
+			snprintf(ref, sizeof ref, "m->%s[0]", fname);
+			if ((err = emit_elem_encode(w, &e, ref)) != GREMLINP_OK) return err;
+		}
+		W("\t} else if (m->"); W(fname); W("_count > 1) {\n");
+	} else {
+		W("\tif (m->"); W(fname); W("_count > 0) {\n");
+	}
+	if ((err = emit_payload(w, &e, fname, sp, fi)) != GREMLINP_OK) return err;
 	W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)packed_tag); W("u);\n");
 	W("\t\t_off = gremlin_varint_encode_at(_buf, _off, _payload);\n");
 	if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_ELEMS))) return err;
@@ -496,7 +518,8 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	  "\t\t\t\t\tit->offset += _l.consumed;\n"
 	  "\t\t\t\t\tif (_l.value > it->src_len - it->offset) return GREMLIN_ERROR_TRUNCATED;\n"
 	  "\t\t\t\t\tit->block_end = it->offset + (size_t)_l.value;\n"
-	  "\t\t\t\t\tbreak;\n\t\t\t\t}\n");
+	  "\t\t\t\t\tif (it->block_end > it->offset) break;\n"
+	  "\t\t\t\t\tcontinue;\n\t\t\t\t}\n");
 	W("\t\t\t\tunsigned _wt = (unsigned)(_t.value % 8u);\n"
 	  "\t\t\t\tif (_wt == 6u || _wt == 7u) return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n"
 	  "\t\t\t\tstruct gremlin_skip_result _sk =\n"
