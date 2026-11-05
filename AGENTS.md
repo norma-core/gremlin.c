@@ -130,9 +130,10 @@ What gets written:
 - proto2 `= {0}` is not an empty message when fields have a non-zero
   `[default]`: those fields are written as 0. Set them to their defaults.
 - oneof is not enforced. Members are plain fields; set one.
-- Repeated scalars are packed or not as protoc does: `[packed]`, else
-  `features.repeated_field_encoding`, else unpacked for proto2 and packed for
-  proto3 and editions. A packed field stays packed for one element.
+- Repeated scalars follow `[packed]` when it is given. Otherwise proto2 goes
+  unpacked, as with protoc, and proto3 and editions go packed for two or more
+  elements and unpacked for one, which is shorter. Valid protobuf, but for one
+  element not protoc's bytes.
 - Enums are written as int32: -1 takes 10 bytes, as with protoc.
 - There is no slot for unknown fields; reading and writing again drops them.
 
@@ -178,6 +179,8 @@ Errors (`enum gremlin_error` in `gremlin.h`): `GREMLIN_ERROR_TRUNCATED`
 
 Where reading differs from protoc:
 
+- A field sent both packed and unpacked in one message is rejected with
+  `GREMLIN_ERROR_INVALID_WIRE_TYPE`, on purpose.
 - A singular nested message that appears twice is replaced by the last one,
   not merged.
 - Several oneof members can be set at once.
@@ -197,13 +200,13 @@ Where reading differs from protoc:
 | oneof | parsed, members are plain fields |
 | proto3 `optional` | parsed, no presence when writing |
 | `required` | parsed, not enforced |
-| `[packed]` | yes, both forms read, mixed too |
+| `[packed]` | yes when writing; either form read, not both in one message |
 | groups | dropped from the struct, skipped when reading |
 | `extend` | fields merged into the extended message, same run only |
 | services, `json_name`, `deprecated`, `reserved` | ignored |
 | custom field options `[(opt) = ...]` | parse error |
 | aggregate option values `option x = { ... };` | parse error |
-| editions | parse, only `repeated_field_encoding` applied |
+| editions | parse, feature semantics not applied |
 
 ## Working on gremlin.c itself
 
