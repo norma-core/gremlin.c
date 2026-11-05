@@ -11,16 +11,21 @@
  *
  * Wire shapes supported:
  *   - Packed:   single tag (wire=LEN_PREFIX) + length varint + concat
- *               of element payloads.
- *   - Unpacked: one tag + value triple per element.
- * A reader takes both, mixed in one message, as protobuf requires.
+ *               of element payloads.  Reader expects ALL occurrences
+ *               to be packed if the first was; mixed forms are
+ *               rejected with INVALID_WIRE_TYPE.
+ *   - Unpacked: one tag + value triple per element.  Reader expects
+ *               ALL occurrences to be unpacked if the first was.
  *
- * Writer: packed or unpacked as the field's `packed` says (resolved in
- * descriptors/src/build.c, as protoc does).  Skip entirely when count == 0.
+ * Writer: by the field's `packing`.  `[packed]` decides when given;
+ * otherwise proto2 goes unpacked, and proto3 and editions pack when
+ * count >= 2 (saves per-element tag byte) and go unpacked when
+ * count == 1 (saves the length-prefix byte).  Skip when count == 0.
  *
- * Reader caches: count and first_tag_offset (points AT the first tag
- * byte, before consumption).  The iterator re-reads each tag during
- * iteration, which is how it takes interleaved fields and both forms.
+ * Reader caches: count, first_tag_offset (points AT the first tag
+ * byte, before consumption), and a packed/unpacked flag.  The
+ * iterator re-reads each tag during iteration — this is how we
+ * tolerate interleaved non-matching fields.
  */
 
 #define WT_VARINT_NUM     0u
@@ -269,14 +274,25 @@ gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 	unsigned packed_tag_bytes   = (unsigned)gremlin_varint_size(packed_tag);
 	unsigned unpacked_tag_bytes = (unsigned)gremlin_varint_size(unpacked_tag);
 
-	W("\tif (m->"); W(fname); W("_count > 0) {\n");
-	if ((err = emit_payload(w, &e, fname, sp, fi)) != GREMLINP_OK) return err;
-	if (f->packed) {
-		W("\t\ts += "); WI((int32_t)packed_tag_bytes);
-		W(" + gremlin_varint_size(_payload) + _payload;\n");
+	if (f->packing == GREMLIND_PACKING_AUTO) {
+		W("\tif (m->"); W(fname); W("_count == 1) {\n");
+		W("\t\ts += "); WI((int32_t)unpacked_tag_bytes); W(" + ");
+		{
+			char ref[128];
+			snprintf(ref, sizeof ref, "m->%s[0]", fname);
+			if ((err = emit_elem_wire_size_expr(w, &e, ref)) != GREMLINP_OK) return err;
+		}
+		W(";\n\t} else if (m->"); W(fname); W("_count > 1) {\n");
 	} else {
+		W("\tif (m->"); W(fname); W("_count > 0) {\n");
+	}
+	if ((err = emit_payload(w, &e, fname, sp, fi)) != GREMLINP_OK) return err;
+	if (f->packing == GREMLIND_PACKING_EXPANDED) {
 		W("\t\ts += m->"); W(fname); W("_count * "); WI((int32_t)unpacked_tag_bytes);
 		W(" + _payload;\n");
+	} else {
+		W("\t\ts += "); WI((int32_t)packed_tag_bytes);
+		W(" + gremlin_varint_size(_payload) + _payload;\n");
 	}
 	W("\t}\n");
 	return GREMLINP_OK;
@@ -296,7 +312,7 @@ gremlinc_repeated_scalar_emit_encode_field(struct gremlinc_writer *w,
 	uint32_t packed_tag = ((uint32_t)f->parsed.index << 3) | WT_LEN_PREFIX_NUM;
 	uint32_t unpacked_tag = ((uint32_t)f->parsed.index << 3) | e.wire;
 
-	if (!f->packed) {
+	if (f->packing == GREMLIND_PACKING_EXPANDED) {
 		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_UNPACKED_ELEMS))) return err;
 		W("\tfor (size_t _i = 0; _i < m->"); W(fname); W("_count; _i++) {\n");
 		if ((err = gremlinc_espec_hook(w, sp, fi, GREMLINC_HOOK_PACKED_ELEM))) return err;
@@ -309,7 +325,18 @@ gremlinc_repeated_scalar_emit_encode_field(struct gremlinc_writer *w,
 		W("\t}\n");
 		return GREMLINP_OK;
 	}
-	W("\tif (m->"); W(fname); W("_count > 0) {\n");
+	if (f->packing == GREMLIND_PACKING_AUTO) {
+		W("\tif (m->"); W(fname); W("_count == 1) {\n");
+		W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)unpacked_tag); W("u);\n");
+		{
+			char ref[128];
+			snprintf(ref, sizeof ref, "m->%s[0]", fname);
+			if ((err = emit_elem_encode(w, &e, ref)) != GREMLINP_OK) return err;
+		}
+		W("\t} else if (m->"); W(fname); W("_count > 1) {\n");
+	} else {
+		W("\tif (m->"); W(fname); W("_count > 0) {\n");
+	}
 	if ((err = emit_payload(w, &e, fname, sp, fi)) != GREMLINP_OK) return err;
 	W("\t\t_off = gremlin_varint32_encode_at(_buf, _off, "); WI((int32_t)packed_tag); W("u);\n");
 	W("\t\t_off = gremlin_varint_encode_at(_buf, _off, _payload);\n");
@@ -329,7 +356,8 @@ gremlinc_repeated_scalar_emit_encode_field(struct gremlinc_writer *w,
 enum gremlinp_parsing_error
 gremlinc_repeated_scalar_emit_reader_arm(struct gremlinc_writer *w,
 					 const struct gremlind_field *f,
-					 const char *fname)
+					 const char *fname,
+					 const char *packed_bool_fname)
 {
 	enum gremlinp_parsing_error err;
 	struct rs_elem e;
@@ -338,9 +366,12 @@ gremlinc_repeated_scalar_emit_reader_arm(struct gremlinc_writer *w,
 	uint32_t packed_tag = ((uint32_t)f->parsed.index << 3) | WT_LEN_PREFIX_NUM;
 	uint32_t unpacked_tag = ((uint32_t)f->parsed.index << 3) | e.wire;
 
-	/* Packed arm: record first occurrence, count elements in the block, advance. */
+	/* Packed arm: detect conflict, record first occurrence, count
+	 * elements in the block, advance. */
 	W("\t\tif (t.value == "); WI((int32_t)packed_tag);
 	W("u /* field "); WI(f->parsed.index); W(", packed */) {\n");
+	W("\t\t\tif (r->"); W(fname); W("_count > 0 && !r->");
+	W(packed_bool_fname); W(") return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n");
 	W("\t\t\tstruct gremlin_bytes_decode_result _bd =\n"
 	  "\t\t\t\tgremlin_bytes_decode(src + offset, len - offset);\n"
 	  "\t\t\tif (_bd.error != GREMLIN_OK) return _bd.error;\n");
@@ -363,16 +394,19 @@ gremlinc_repeated_scalar_emit_reader_arm(struct gremlinc_writer *w,
 	}
 	W("\t\t\tif (r->"); W(fname); W("_count == 0) {\n");
 	W("\t\t\t\tr->"); W(fname); W("_first_offset = offset - t.consumed;\n");
+	W("\t\t\t\tr->"); W(packed_bool_fname); W(" = true;\n");
 	W("\t\t\t}\n");
 	W("\t\t\tr->"); W(fname); W("_count += _bcnt;\n");
 	W("\t\t\tr->_has."); W(fname); W(" = 1;\n");
 	W("\t\t\toffset += _bd.consumed;\n");
 	W("\t\t\tcontinue;\n\t\t}\n");
 
-	/* Unpacked arm: record first occurrence, decode single value to
-	 * advance offset, bump count by 1. */
+	/* Unpacked arm: detect conflict, record first occurrence, decode
+	 * single value to advance offset, bump count by 1. */
 	W("\t\tif (t.value == "); WI((int32_t)unpacked_tag);
 	W("u /* field "); WI(f->parsed.index); W(", unpacked */) {\n");
+	W("\t\t\tif (r->"); W(fname); W("_count > 0 && r->");
+	W(packed_bool_fname); W(") return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n");
 	/* Decode and discard the value — we just need to advance offset. */
 	if (!e.is_enum && e.wire == WT_FIXED32_NUM) {
 		W("\t\t\tif (len - offset < 4) return GREMLIN_ERROR_TRUNCATED;\n");
@@ -411,7 +445,8 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 				     const char *reader_ty,
 				     const char *reader_ok,
 				     const char *iter_ok,
-				     const char *fname)
+				     const char *fname,
+				     const char *packed_bool_fname)
 {
 	enum gremlinp_parsing_error err;
 	struct rs_elem e;
@@ -427,6 +462,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\tsize_t\t\t offset;\n");
 	W("\tsize_t\t\t block_end;\n");
 	W("\tsize_t\t\t count_remaining;\n");
+	W("\tbool\t\t is_packed;\n");
 	W("} "); W(reader_ty); W("_"); W(fname); W("_iter;\n\n");
 	if ((err = gremlinc_emit_iter_ok(w, iter_ok, reader_ty, fname, true)) != GREMLINP_OK) return err;
 
@@ -449,6 +485,7 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 	W("\tit.src_len = r->src_len;\n");
 	W("\tit.offset = r->"); W(fname); W("_first_offset;\n");
 	W("\tit.count_remaining = r->"); W(fname); W("_count;\n");
+	W("\tit.is_packed = r->"); W(packed_bool_fname); W(";\n");
 	W("\treturn it;\n}\n\n");
 
 	/* next */
@@ -464,46 +501,63 @@ gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 		W("\t*out = "); W(gremlinc_default_check_rhs(e.kind)); W(";\n");
 	}
 	W("\tif (it->count_remaining == 0) return GREMLIN_OK;\n");
-	/* Outside a packed block, scan to the next occurrence: a packed one
-	 * opens a block, an unpacked one is the element itself. */
-	W("\tif (it->block_end <= it->offset) {\n");
-	if ((err = gremlinc_emit_iter_scan_spec(w, "\t\t", true)) != GREMLINP_OK) return err;
-	W("\t\twhile (it->offset < it->src_len) {\n"
-	  "\t\t\tstruct gremlin_varint32_decode_result _t =\n"
-	  "\t\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"
-	  "\t\t\tif (_t.error != GREMLIN_OK) return _t.error;\n"
-	  "\t\t\tit->offset += _t.consumed;\n");
-	W("\t\t\tif (_t.value == "); WI((int32_t)packed_tag); W("u) {\n");
-	W("\t\t\t\tstruct gremlin_varint_decode_result _l =\n"
-	  "\t\t\t\t\tgremlin_varint_decode(it->src + it->offset, it->src_len - it->offset);\n"
-	  "\t\t\t\tif (_l.error != GREMLIN_OK) return _l.error;\n"
-	  "\t\t\t\tit->offset += _l.consumed;\n"
-	  "\t\t\t\tif (_l.value > it->src_len - it->offset) return GREMLIN_ERROR_TRUNCATED;\n"
-	  "\t\t\t\tit->block_end = it->offset + (size_t)_l.value;\n"
-	  "\t\t\t\tif (it->block_end > it->offset) break;\n"
-	  "\t\t\t\tcontinue;\n\t\t\t}\n");
-	W("\t\t\tif (_t.value == "); WI((int32_t)unpacked_tag); W("u) {\n");
-	W("\t\t\t\t{\n");
-	if ((err = emit_elem_decode(w, &e, "it->src_len")) != GREMLINP_OK) return err;
-	W("\t\t\t\t}\n");
-	W("\t\t\t\tit->count_remaining--;\n");
-	W("\t\t\t\treturn GREMLIN_OK;\n\t\t\t}\n");
-	W("\t\t\tunsigned _wt = (unsigned)(_t.value % 8u);\n"
-	  "\t\t\tif (_wt == 6u || _wt == 7u) return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n"
-	  "\t\t\tstruct gremlin_skip_result _sk =\n"
-	  "\t\t\t\tgremlin_skip_data(it->src + it->offset, it->src_len - it->offset,\n"
-	  "\t\t\t\t                  (enum gremlin_wire_type)_wt);\n"
-	  "\t\t\tif (_sk.error != GREMLIN_OK) return _sk.error;\n"
-	  "\t\t\tit->offset += _sk.consumed;\n\t\t}\n");
-	W("\t\tif (it->block_end <= it->offset) return GREMLIN_ERROR_TRUNCATED;\n");
-	W("\t}\n");
+	/* Packed branch */
+	W("\tif (it->is_packed) {\n");
+	W("\t\tif (it->block_end <= it->offset) {\n");
+	/* Scan forward for next PACKED_TAG. */
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t\t\t", true)) != GREMLINP_OK) return err;
+	W("\t\t\twhile (it->offset < it->src_len) {\n"
+	  "\t\t\t\tstruct gremlin_varint32_decode_result _t =\n"
+	  "\t\t\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"
+	  "\t\t\t\tif (_t.error != GREMLIN_OK) return _t.error;\n"
+	  "\t\t\t\tit->offset += _t.consumed;\n");
+	W("\t\t\t\tif (_t.value == "); WI((int32_t)packed_tag); W("u) {\n");
+	W("\t\t\t\t\tstruct gremlin_varint_decode_result _l =\n"
+	  "\t\t\t\t\t\tgremlin_varint_decode(it->src + it->offset, it->src_len - it->offset);\n"
+	  "\t\t\t\t\tif (_l.error != GREMLIN_OK) return _l.error;\n"
+	  "\t\t\t\t\tit->offset += _l.consumed;\n"
+	  "\t\t\t\t\tif (_l.value > it->src_len - it->offset) return GREMLIN_ERROR_TRUNCATED;\n"
+	  "\t\t\t\t\tit->block_end = it->offset + (size_t)_l.value;\n"
+	  "\t\t\t\t\tif (it->block_end > it->offset) break;\n"
+	  "\t\t\t\t\tcontinue;\n\t\t\t\t}\n");
+	W("\t\t\t\tunsigned _wt = (unsigned)(_t.value % 8u);\n"
+	  "\t\t\t\tif (_wt == 6u || _wt == 7u) return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n"
+	  "\t\t\t\tstruct gremlin_skip_result _sk =\n"
+	  "\t\t\t\t\tgremlin_skip_data(it->src + it->offset, it->src_len - it->offset,\n"
+	  "\t\t\t\t\t                  (enum gremlin_wire_type)_wt);\n"
+	  "\t\t\t\tif (_sk.error != GREMLIN_OK) return _sk.error;\n"
+	  "\t\t\t\tit->offset += _sk.consumed;\n\t\t\t}\n");
+	W("\t\t\tif (it->block_end <= it->offset) return GREMLIN_ERROR_TRUNCATED;\n");
+	W("\t\t}\n");
 	/* Decode next element within the current block. */
-	W("\t{\n");
+	W("\t\t{\n");
 	if ((err = emit_elem_decode(w, &e, "it->block_end")) != GREMLINP_OK) return err;
-	W("\t}\n");
-	W("\t/*@ assert it->offset <= it->block_end; */\n");
-	W("\tit->count_remaining--;\n");
-	W("\tif (it->offset >= it->block_end) it->block_end = 0;\n");
-	W("\treturn GREMLIN_OK;\n}\n\n");
+	W("\t\t}\n");
+	W("\t\t/*@ assert it->offset <= it->block_end; */\n");
+	W("\t\tit->count_remaining--;\n");
+	W("\t\tif (it->offset >= it->block_end) it->block_end = 0;\n");
+	W("\t\treturn GREMLIN_OK;\n\t}\n");
+	/* Unpacked branch */
+	if ((err = gremlinc_emit_iter_scan_spec(w, "\t", false)) != GREMLINP_OK) return err;
+	W("\twhile (it->offset < it->src_len) {\n"
+	  "\t\tstruct gremlin_varint32_decode_result _t =\n"
+	  "\t\t\tgremlin_varint32_decode(it->src + it->offset, it->src_len - it->offset);\n"
+	  "\t\tif (_t.error != GREMLIN_OK) return _t.error;\n"
+	  "\t\tit->offset += _t.consumed;\n");
+	W("\t\tif (_t.value == "); WI((int32_t)unpacked_tag); W("u) {\n");
+	/* Decode a single element */
+	W("\t\t\t{\n");
+	if ((err = emit_elem_decode(w, &e, "it->src_len")) != GREMLINP_OK) return err;
+	W("\t\t\t}\n");
+	W("\t\t\tit->count_remaining--;\n");
+	W("\t\t\treturn GREMLIN_OK;\n\t\t}\n");
+	W("\t\tunsigned _wt = (unsigned)(_t.value % 8u);\n"
+	  "\t\tif (_wt == 6u || _wt == 7u) return GREMLIN_ERROR_INVALID_WIRE_TYPE;\n"
+	  "\t\tstruct gremlin_skip_result _sk =\n"
+	  "\t\t\tgremlin_skip_data(it->src + it->offset, it->src_len - it->offset,\n"
+	  "\t\t\t                  (enum gremlin_wire_type)_wt);\n"
+	  "\t\tif (_sk.error != GREMLIN_OK) return _sk.error;\n"
+	  "\t\tit->offset += _sk.consumed;\n\t}\n");
+	W("\treturn GREMLIN_ERROR_TRUNCATED;\n}\n\n");
 	return GREMLINP_OK;
 }

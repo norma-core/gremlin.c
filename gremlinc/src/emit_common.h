@@ -320,8 +320,11 @@ enum gremlinp_parsing_error	gremlinc_map_emit_getter(struct gremlinc_writer *w,
 
 /*
  * Repeated-scalar family — `repeated <numeric>`, `repeated bool`,
- * `repeated <enum>`.  The writer packs as the field's `packed` says; the
- * reader takes both forms, mixed within one field.
+ * `repeated <enum>`.  Supports both packed and unpacked wire forms.
+ * Writer follows the field's `packing` (descriptors/src/build.c).
+ * Reader rejects mixed packed/unpacked within a single
+ * field (first occurrence sets `<fname>_packed`, subsequent occurrences
+ * must match — mismatch → GREMLIN_ERROR_INVALID_WIRE_TYPE).
  */
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_size_field(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
@@ -335,13 +338,15 @@ enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_encode_field(struct gr
 							size_t fi);
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_reader_arm(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
-							const char *fname);
+							const char *fname,
+							const char *packed_bool_fname);
 enum gremlinp_parsing_error	gremlinc_repeated_scalar_emit_getter(struct gremlinc_writer *w,
 							const struct gremlind_field *f,
 							const char *reader_ty,
 							const char *reader_ok,
 							const char *iter_ok,
-							const char *fname);
+							const char *fname,
+							const char *packed_bool_fname);
 
 /* ------------------------------------------------------------------------
  * Write-side ACSL (emit_encode_spec.c).  Every call is a no-op when `sp`

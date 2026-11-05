@@ -42,7 +42,7 @@ caller_size_strings(void)
 }
 
 /*@ assigns \nothing;
-    ensures \result == 57;
+    ensures \result == 56;
 */
 size_t
 caller_size_top(void)
@@ -130,6 +130,19 @@ caller_size_unpacks(void)
 	return wpw_Unpacks_size(&m);
 }
 
+/*@ assigns \nothing;
+    ensures \result == 10;
+*/
+size_t
+caller_size_packed_ones(void)
+{
+	uint32_t a[1] = { 300 };
+	uint32_t b[1] = { 7 };
+	wpw_PackedOnes m = { .a = a, .a_count = 1, .b = b, .b_count = 1 };
+
+	return wpw_PackedOnes_size(&m);
+}
+
 /*@ assigns \nothing; */
 uint8_t
 caller_encode_unpacks(void)
@@ -172,7 +185,7 @@ caller_encode_top(void)
 	struct gremlin_bytes ch[2] = { { caller_text, 5 }, { caller_payload, 3 } };
 	uint64_t vals[2] = { 1, 300 };
 	wpw_Top t = { 7, { caller_text, 5 }, &mid, &l2, ch, 2, vals, 2, 0 };
-	uint8_t buf[57];
+	uint8_t buf[56];
 
 	wpw_Top_size(&t);
 	size_t end = wpw_Top_encode_at(&t, buf, 0);

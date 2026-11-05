@@ -44,7 +44,7 @@ struct ep_field {
 	unsigned		 width;		/* EK_REP_FIXED element width */
 	unsigned		 tagb;		/* bytes of the (packed) tag */
 	unsigned		 utagb;		/* bytes of the unpacked tag */
-	bool			 packed;	/* a value array goes out packed */
+	enum gremlind_packing	 packing;	/* how a value array goes out */
 	/* names, set on emission */
 	const char		*fname;
 	const char		*def;
@@ -272,7 +272,7 @@ classify(const struct gremlinc_encode_plan *p, size_t self,
 			out->tag = out->ctype;
 			out->tagb = tag_bytes(f, WT_LEN_PREFIX_NUM);
 			out->utagb = tag_bytes(f, WT_VARINT_NUM);
-			out->packed = f->packed;
+			out->packing = f->packing;
 			out->sk = SCALAR_INT32;
 			out->is_enum = true;
 			return true;
@@ -314,7 +314,7 @@ classify(const struct gremlinc_encode_plan *p, size_t self,
 	out->tag = si->c_type;
 	out->tagb = tag_bytes(f, WT_LEN_PREFIX_NUM);
 	out->utagb = tag_bytes(f, si->wire_type);
-	out->packed = f->packed;
+	out->packing = f->packing;
 	if (si->wire_type == WT_FIXED32_NUM || si->wire_type == WT_FIXED64_NUM) {
 		out->kind = EK_REP_FIXED;
 		out->width = si->wire_type == WT_FIXED32_NUM ? 4u : 8u;
@@ -850,14 +850,25 @@ emit_field_size(struct gremlinc_writer *w, struct gremlinc_espec *sp,
 		F("%s(m, m->%s_count);\n\n", f->sum, fn);
 		break;
 	case EK_REP_VARINT:
-		if (f->packed)
+		if (f->packing == GREMLIND_PACKING_AUTO) {
+			if ((ref = dup(a, "m->%s[0]", fn)) == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+			const char *es = elem_size(a, f, ref);
+			if (es == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+			F("m->%s_count == 1 ? %u + %s :\n"
+			  "      m->%s_count > 1 ? %u + varint_size(%s(m, m->%s_count)) + %s(m, m->%s_count) : 0;\n\n",
+			  fn, f->utagb, es, fn, f->tagb, f->sum, fn, f->sum, fn);
+		} else if (f->packing == GREMLIND_PACKING_PACKED)
 			F("m->%s_count > 0 ? %u + varint_size(%s(m, m->%s_count)) + %s(m, m->%s_count) : 0;\n\n",
 			  fn, f->tagb, f->sum, fn, f->sum, fn);
 		else
 			F("m->%s_count * %u + %s(m, m->%s_count);\n\n", fn, f->utagb, f->sum, fn);
 		break;
 	case EK_REP_FIXED:
-		if (f->packed)
+		if (f->packing == GREMLIND_PACKING_AUTO)
+			F("m->%s_count == 1 ? %u + %u :\n"
+			  "      m->%s_count > 1 ? %u + varint_size(m->%s_count * %u) + m->%s_count * %u : 0;\n\n",
+			  fn, f->utagb, f->width, fn, f->tagb, fn, f->width, fn, f->width);
+		else if (f->packing == GREMLIND_PACKING_PACKED)
 			F("m->%s_count > 0 ? %u + varint_size(m->%s_count * %u) + m->%s_count * %u : 0;\n\n",
 			  fn, f->tagb, fn, f->width, fn, f->width);
 		else

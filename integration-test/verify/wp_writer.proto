@@ -74,3 +74,8 @@ message Unpacks {
     repeated uint64 u = 3 [packed = false];
     repeated fixed32 x = 4 [packed = false];
 }
+
+message PackedOnes {
+    repeated uint32 a = 1 [packed = true];
+    repeated fixed32 b = 2 [packed = true];
+}

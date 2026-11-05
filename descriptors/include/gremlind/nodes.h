@@ -113,6 +113,12 @@ struct gremlind_type_ref {
 	} u;
 };
 
+enum gremlind_packing {
+	GREMLIND_PACKING_AUTO,		/* packed from two elements, one goes unpacked */
+	GREMLIND_PACKING_PACKED,
+	GREMLIND_PACKING_EXPANDED
+};
+
 struct gremlind_field {
 	struct gremlinp_field_parse_result	parsed;
 	struct gremlind_type_ref		type;		/* set by gremlind_resolve_type_refs */
@@ -126,11 +132,9 @@ struct gremlind_field {
 	 */
 	bool					has_default;
 	struct gremlinp_const_parse_result	default_value;
-	/* A repeated scalar goes on the wire packed: `[packed]` or the
-	 * repeated_field_encoding feature of the field or its file, else
-	 * false for proto2 and true for proto3 and editions. */
-	bool					packed;
-	signed char				packed_opt;	/* the field's own: -1 none, 0, 1 */
+	/* How a repeated scalar goes on the wire: `[packed]`, else unpacked
+	 * for proto2 and packed from two elements for proto3 and editions. */
+	enum gremlind_packing			packing;
 	/*
 	 * For fields synthesized by `gremlind_propagate_extends` from an
 	 * `extend T { ... }` block, `origin_file` points at the file that
@@ -201,7 +205,6 @@ struct gremlind_visible_files {
 struct gremlind_file {
 	struct gremlind_syntax			syntax;
 	struct gremlind_edition			edition;
-	signed char				packed_opt;	/* repeated_field_encoding: -1 none, 0, 1 */
 	struct gremlind_package			package;
 	struct gremlind_imports			imports;
 	struct gremlind_enums			enums;		/* flat, all nesting levels */

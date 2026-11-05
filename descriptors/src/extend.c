@@ -211,9 +211,8 @@ apply_extend(struct gremlind_arena *arena,
 		merged[i].origin_file = origin_file;
 		merged[i].origin_scope = persistent_scope;
 		/* Packing follows the extending file, not the extended one. */
-		int opt = gremlind_field_packed_option(buf, &merged[i].parsed.options);
-		merged[i].packed_opt = (signed char)opt;
-		merged[i].packed = opt >= 0 ? opt == 1 : gremlind_file_packed_default(origin_file);
+		merged[i].packing = gremlind_field_packing(origin_file,
+		    gremlind_field_packed_option(buf, &merged[i].parsed.options));
 	}
 
 	target->fields.items = merged;

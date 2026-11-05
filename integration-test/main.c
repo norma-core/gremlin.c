@@ -1180,23 +1180,34 @@ test_packed_option(void)
 	return 0;
 }
 
-/* One field sent packed and then unpacked in one message reads as one list. */
-static const uint8_t MIXED_PACKED[] = { 250, 1, 2, 1, 2, 248, 1, 3, 250, 1, 0, 250, 1, 1, 4 };
+/* An empty packed block between two others carries no element. */
+static const uint8_t PACKED_EMPTY_BLOCK[] = { 210, 5, 1, 1, 210, 5, 0, 210, 5, 1, 2 };
 
 static int
-test_mixed_packed_read(void)
+test_packed_empty_block(void)
 {
-	protobuf_unittest_TestAllTypes_reader r;
-	TEST_ASSERT_EQ_INT(GREMLIN_OK,
-		protobuf_unittest_TestAllTypes_reader_init(&r, MIXED_PACKED, sizeof MIXED_PACKED));
-	TEST_ASSERT_EQ_UINT(4, protobuf_unittest_TestAllTypes_reader_repeated_int32_count(&r));
-	protobuf_unittest_TestAllTypes_reader_repeated_int32_iter it =
-		protobuf_unittest_TestAllTypes_reader_repeated_int32_begin(&r);
-	for (int32_t want = 1; want <= 4; want++) {
+	protobuf_unittest_TestPackedTypes_reader r;
+	TEST_ASSERT_EQ_INT(GREMLIN_OK, protobuf_unittest_TestPackedTypes_reader_init(&r,
+		PACKED_EMPTY_BLOCK, sizeof PACKED_EMPTY_BLOCK));
+	TEST_ASSERT_EQ_UINT(2, protobuf_unittest_TestPackedTypes_reader_packed_int32_count(&r));
+	protobuf_unittest_TestPackedTypes_reader_packed_int32_iter it =
+		protobuf_unittest_TestPackedTypes_reader_packed_int32_begin(&r);
+	for (int32_t want = 1; want <= 2; want++) {
 		int32_t v;
-		TEST_ASSERT_EQ_INT(GREMLIN_OK, protobuf_unittest_TestAllTypes_reader_repeated_int32_next(&it, &v));
+		TEST_ASSERT_EQ_INT(GREMLIN_OK, protobuf_unittest_TestPackedTypes_reader_packed_int32_next(&it, &v));
 		TEST_ASSERT_EQ_INT(want, v);
 	}
+	return 0;
+}
+
+static const uint8_t MIXED_PACKED[] = { 248, 1, 3, 250, 1, 1, 4 };
+
+static int
+test_mixed_packed_rejected(void)
+{
+	protobuf_unittest_TestAllTypes_reader r;
+	TEST_ASSERT_EQ_INT(GREMLIN_ERROR_INVALID_WIRE_TYPE,
+		protobuf_unittest_TestAllTypes_reader_init(&r, MIXED_PACKED, sizeof MIXED_PACKED));
 	return 0;
 }
 
@@ -1215,7 +1226,8 @@ static const struct test_case TESTS[] = {
 	{ "negative values", test_negative_values },
 	{ "negative enum",   test_negative_enum   },
 	{ "packed option",   test_packed_option   },
-	{ "mixed packed read", test_mixed_packed_read },
+	{ "packed empty block", test_packed_empty_block },
+	{ "mixed packed rejected", test_mixed_packed_rejected },
 	{ "complex write",   test_complex_write   },
 	{ "complex read",    test_complex_read    },
 	{ "nil list",        test_nil_list        },

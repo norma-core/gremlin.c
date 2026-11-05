@@ -195,7 +195,8 @@ static enum gremlinp_parsing_error
 dispatch_reader_arm(struct gremlinc_writer *w,
 		    const struct gremlind_field *f,
 		    const struct scalar_info *si,
-		    const char *fname)
+		    const char *fname,
+		    const char *packed_bool_fname)
 {
 	if (field_is_map(f)) {
 		return gremlinc_map_emit_reader_arm(w, f, fname);
@@ -207,7 +208,7 @@ dispatch_reader_arm(struct gremlinc_writer *w,
 		return gremlinc_repeated_msg_emit_reader_arm(w, f, fname);
 	}
 	if (field_is_repeated_scalar(f)) {
-		return gremlinc_repeated_scalar_emit_reader_arm(w, f, fname);
+		return gremlinc_repeated_scalar_emit_reader_arm(w, f, fname, packed_bool_fname);
 	}
 	if (f->type.kind == GREMLIND_TYPE_REF_MESSAGE) {
 		return gremlinc_msg_ref_emit_reader_arm(w, f, fname);
@@ -406,6 +407,9 @@ gremlinc_reserve_public_names(struct gremlinc_name_scope *reserved,
 			const char *fn = field_cname(&members, fld);
 			if (fn == NULL || claim_join3(reserved, reader, "_get_", fn) == NULL)
 				return GREMLINP_ERROR_OUT_OF_MEMORY;
+			if (field_is_repeated_scalar(fld) &&
+			    claim_join2(&members, fn, "_packed") == NULL)
+				return GREMLINP_ERROR_OUT_OF_MEMORY;
 			if (field_is_map(fld)) {
 				const char *pre = claim_pred_prefix(a, m->c_name, fn);
 				if (pre == NULL || claim_join2(reserved, pre, "_entry") == NULL)
@@ -554,6 +558,11 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	struct map_slot_info map_keys[1024];
 	struct map_slot_info map_vals[1024];
 	const char *entry_types[1024];
+	/* Per-repeated-scalar-field state: mangled member name for the
+	 * `<fname>_packed` bool the reader uses to discriminate packed vs
+	 * unpacked wire form.  Populated only when
+	 * `field_is_repeated_scalar(fld)`. */
+	const char *packed_names[1024];
 	const char *iter_oks[1024];
 	for (size_t i = 0; i < m->fields.count; i++) {
 		const struct gremlind_field *fld = &m->fields.items[i];
@@ -562,6 +571,20 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		getter_fns[i] = claim_join3(scope, reader_ty, "_get_", fnames[i]);
 		if (getter_fns[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
 		entry_types[i] = NULL;
+		packed_names[i] = NULL;
+		if (field_is_repeated_scalar(fld)) {
+			/* Reserve `<fname>_packed` in the member scope; the
+			 * mangler takes care of collisions with proto fields
+			 * named `<X>_packed`. */
+			size_t fl = strlen(fnames[i]);
+			char *buf = gremlind_arena_alloc(scope->arena, fl + 8);
+			if (buf == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+			memcpy(buf, fnames[i], fl);
+			memcpy(buf + fl, "_packed", 8);	/* includes NUL */
+			packed_names[i] = gremlinc_name_scope_mangle(
+				&members, buf, fl + 7);
+			if (packed_names[i] == NULL) return GREMLINP_ERROR_OUT_OF_MEMORY;
+		}
 		if (field_is_map(fld)) {
 			gremlinc_map_classify(scope->arena, fld,
 					      &map_keys[i], &map_vals[i]);
@@ -797,10 +820,15 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		const struct gremlind_field *fld = &m->fields.items[i];
 		if (field_is_repeated_bytes(fld) ||
 		    field_is_repeated_msg(fld) ||
-		    field_is_repeated_scalar(fld) ||
 		    field_is_map(fld)) {
 			W("\tsize_t\t"); W(fnames[i]); W("_count;\n");
 			W("\tsize_t\t"); W(fnames[i]); W("_first_offset;\n");
+			continue;
+		}
+		if (field_is_repeated_scalar(fld)) {
+			W("\tsize_t\t"); W(fnames[i]); W("_count;\n");
+			W("\tsize_t\t"); W(fnames[i]); W("_first_offset;\n");
+			W("\tbool\t"); W(packed_names[i]); W(";\n");
 			continue;
 		}
 		const char *rt = reader_field_c_type(scope->arena, fld, sinfos[i]);
@@ -878,7 +906,8 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 	  "\t\tif (t.error != GREMLIN_OK) return t.error;\n"
 	  "\t\toffset += t.consumed;\n");
 	for (size_t i = 0; i < m->fields.count; i++) {
-		err = dispatch_reader_arm(w, &m->fields.items[i], sinfos[i], fnames[i]);
+		err = dispatch_reader_arm(w, &m->fields.items[i], sinfos[i],
+					  fnames[i], packed_names[i]);
 		if (err != GREMLINP_OK) return err;
 	}
 	/* Miss: unknown field_num, or field_num we know but wrong wire_type.
@@ -924,7 +953,7 @@ gremlinc_emit_message_marked(struct gremlinc_writer *w,
 		}
 		if (field_is_repeated_scalar(fld)) {
 			err = gremlinc_repeated_scalar_emit_getter(w, fld,
-				reader_ty, reader_ok, iter_oks[i], fnames[i]);
+				reader_ty, reader_ok, iter_oks[i], fnames[i], packed_names[i]);
 			if (err != GREMLINP_OK) return err;
 			continue;
 		}
