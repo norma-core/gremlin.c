@@ -23,12 +23,12 @@ cmake -S "$ROOT/bench" -B "$B" -DCMAKE_BUILD_TYPE=Release >"$B/configure.log" 2>
 	{ cat "$B/configure.log" >&2; exit 1; }
 grep "not found, skipped" "$B/configure.log" >&2 || :
 # A library no longer found must not leave its old program behind.
-rm -f "$B/bench_cpp" "$B/bench_upb" "$B/bench_protobuf_c" "$B/bench_nanopb"
+rm -f "$B/bench_cpp" "$B/bench_upb" "$B/bench_protobuf_c" "$B/bench_nanopb" "$B/bench_prost"
 cmake --build "$B" -j4 --target bench_all >"$B/build.log" 2>&1 ||
 	{ cat "$B/build.log" >&2; exit 1; }
 
 PROGS="gremlin"
-for p in cpp upb protobuf_c nanopb; do
+for p in cpp upb protobuf_c nanopb prost; do
 	[ ! -x "$B/bench_$p" ] || PROGS="$PROGS $p"
 done
 if [ -n "${GREMLIN_ZIG_DIR:-}" ]; then
@@ -205,8 +205,8 @@ END {
 	for (i = 1; i <= 2; i++) {
 		w = i == 1 ? "deep" : "golden"
 		printf "%s, %s:\n\n", title[w], (w == "deep" ? "same input bytes" : "same bytes to parse, each its own message to marshal")
-		table(w, "gremlin cpp upb protobuf_c nanopb",
-		    "gremlin.c|protobuf C++|upb|protobuf-c|nanopb")
+		table(w, "gremlin cpp upb protobuf_c nanopb prost",
+		    "gremlin.c|protobuf C++|upb|protobuf-c|nanopb|prost")
 		# zig runs DeepNested only; golden_message in go does other work.
 		if (w == "deep" && (("zig" in seen) || ("gremlin_go" in seen))) {
 			printf "%s, gremlin in other languages, each its own benchmark program:\n\n", title[w]

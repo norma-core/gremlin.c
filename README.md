@@ -143,24 +143,29 @@ See [`example/main.c`](example/main.c) for a full encode/decode path.
 
 ## Benchmarks
 
-gremlin.c against Google's C++ protobuf, upb (Google's C runtime), protobuf-c
-and nanopb (C for embedded) on the same bytes, and on DeepNested against
-gremlin.zig and gremlin_go. Apple M3 Pro, macOS 26.6, Apple clang 17; the C and C++ programs
-`-O3 -march=native` with LTO, gremlin.zig ReleaseFast, Go as `go build` makes
-it; protobuf 36.2, protobuf-c 1.5.2, nanopb 0.4.9.2, Zig 0.15.2, Go 1.27.3.
+gremlin.c against Google's C++ protobuf, upb (Google's C runtime), protobuf-c,
+nanopb (C for embedded) and prost (Rust) on the same bytes, and on DeepNested
+against gremlin.zig and gremlin_go. Apple M3 Pro, macOS 26.6, Apple clang 17;
+the C and C++ programs `-O3 -march=native` with LTO, prost with LTO and
+`target-cpu=native`, gremlin.zig ReleaseFast, Go as `go build` makes it;
+protobuf 36.2, protobuf-c 1.5.2, nanopb 0.4.9.2, prost 0.14.4 on Rust 1.99.0,
+Zig 0.15.2, Go 1.27.3.
 Median ns/op of 5 rounds, each program run for about 30 s a round, in
 rotating order; in brackets, how many times slower than gremlin.c. Spread is
 the widest (max - min) / median between rounds.
 
 ### 🌳 DeepNested, five levels of nested and repeated messages, 1411 bytes
 
-| Operation | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb |
-|---|---|---|---|---|---|
-| 🔨 Marshal | **532 ns** | 861 ns (1.6x) | 1,185 ns (2.2x) | 1,426 ns (2.7x) | 11,047 ns (20.8x) |
-| 📖 Unmarshal | **32.0 ns** | 2,039 ns (63.7x) | 1,903 ns (59.5x) | 2,034 ns (63.6x) | 4,670 ns (145.9x) |
-| 🎯 Lazy Read | **32.3 ns** | 2,052 ns (63.5x) | 1,914 ns (59.3x) | 2,037 ns (63.1x) | 4,716 ns (146.0x) |
-| 🔍 Deep Access | **91.0 ns** | 2,039 ns (22.4x) | 1,906 ns (20.9x) | 2,043 ns (22.4x) | 4,651 ns (51.1x) |
-| Spread | 4.5% | 3.9% | 3.9% | 2.1% | 4.7% |
+| Operation | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb | prost |
+|---|---|---|---|---|---|---|
+| 🔨 Marshal | **523 ns** | 836 ns (1.6x) | 1,175 ns (2.2x) | 1,417 ns (2.7x) | 11,126 ns (21.3x) | 1,134 ns (2.2x) |
+| 📖 Unmarshal | **32.1 ns** | 2,014 ns (62.7x) | 1,898 ns (59.1x) | 2,035 ns (63.4x) | 4,806 ns (149.7x) | 3,463 ns (107.9x) |
+| 🎯 Lazy Read | **32.0 ns** | 2,023 ns (63.2x) | 1,893 ns (59.1x) | 2,031 ns (63.5x) | 4,817 ns (150.5x) | 3,468 ns (108.4x) |
+| 🔍 Deep Access | **89.5 ns** | 2,020 ns (22.6x) | 1,895 ns (21.2x) | 2,030 ns (22.7x) | 4,780 ns (53.4x) | 3,482 ns (38.9x) |
+| Spread | 4.2% | 4.0% | 2.6% | 1.7% | 3.2% | 1.6% |
+
+gremlin.zig and gremlin_go are from the run before prost was added, with
+that run's gremlin.c:
 
 | Operation | gremlin.c | gremlin.zig | gremlin_go | protobuf-go |
 |---|---|---|---|---|
@@ -172,13 +177,13 @@ the widest (max - min) / median between rounds.
 
 ### 📜 golden_message, protobuf's `TestAllTypes`, 537 bytes
 
-| Operation | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb |
-|---|---|---|---|---|---|
-| 🔨 Marshal | **186 ns** | 202 ns (1.1x) | 682 ns (3.7x) | n/a | n/a |
-| 📖 Unmarshal | **285 ns** | 1,138 ns (4.0x) | 1,320 ns (4.6x) | n/a | n/a |
-| 🎯 Lazy Read | **279 ns** | 1,134 ns (4.1x) | 1,309 ns (4.7x) | n/a | n/a |
-| 🔍 Deep Access | **284 ns** | 1,138 ns (4.0x) | 1,316 ns (4.6x) | n/a | n/a |
-| Spread | 7.5% | 4.2% | 3.8% | n/a | n/a |
+| Operation | gremlin.c | protobuf C++ | upb | protobuf-c | nanopb | prost |
+|---|---|---|---|---|---|---|
+| 🔨 Marshal | **185 ns** | 201 ns (1.1x) | 679 ns (3.7x) | n/a | n/a | 514 ns (2.8x) |
+| 📖 Unmarshal | **278 ns** | 1,132 ns (4.1x) | 1,300 ns (4.7x) | n/a | n/a | 1,464 ns (5.3x) |
+| 🎯 Lazy Read | **277 ns** | 1,128 ns (4.1x) | 1,312 ns (4.7x) | n/a | n/a | 1,462 ns (5.3x) |
+| 🔍 Deep Access | **281 ns** | 1,128 ns (4.0x) | 1,305 ns (4.6x) | n/a | n/a | 1,462 ns (5.2x) |
+| Spread | 3.6% | 4.0% | 2.8% | n/a | n/a | 3.1% |
 
 - 🔨 **Marshal**: `_size` and encode a built message (others: their serialize).
 - 📖 **Unmarshal**: parse the bytes, touch no field.
@@ -189,8 +194,9 @@ What they show: gremlin.c reads lazily, so Deep Access touches 5 of
 DeepNested's 38 messages while the others decode all 38. The speedups are
 those of reading part of a message, not of decoding all of it. protobuf C++
 also allocates on the heap while parsing (11 blocks per DeepNested here, 30
-with libstdc++), and its timings include that. On golden_message gremlin.c
-marshals the message built in code and the others the parsed file, and
+with libstdc++), prost 98 per DeepNested and 47 per golden_message, and
+their timings include that. On golden_message gremlin.c marshals the
+message built in code and the others the parsed file, and
 gremlin.c writes its repeated scalars packed, so fewer bytes. protobuf-c and
 nanopb cannot read golden_message, which has groups. gremlin.zig and
 gremlin_go run their own programs on their own copy of DeepNested (1409
@@ -200,6 +206,7 @@ run, gremlin_go's does other work and is not shown (see `bench/README.md`).
 ```bash
 brew install cmake pkgconf protobuf protobuf-c nanopb   # or apt, see bench/
 bench/run.sh                                    # 30 s per program and round, 5 rounds
+                                                # prost joins when cargo is on PATH
 ```
 
 Setup, fairness and the allocation counts are in [`bench/README.md`](bench/README.md).

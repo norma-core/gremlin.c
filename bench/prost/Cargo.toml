@@ -1,0 +1,17 @@
+[package]
+name = "bench_prost"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+prost = "=0.14.4"
+
+[build-dependencies]
+prost-build = "=0.14.4"
+
+# The LTO the C and C++ programs get from -flto.
+[profile.release]
+lto = true
+codegen-units = 1

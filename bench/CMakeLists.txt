@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
-# gremlin.c against Google's C++ protobuf, upb, protobuf-c and nanopb on the
-# same bytes. The other libraries come from the system, see README.md here.
+# gremlin.c against Google's C++ protobuf, upb, protobuf-c, nanopb and prost on
+# the same bytes. The other libraries come from the system, see README.md here.
 project(gremlin_bench C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -197,5 +197,23 @@ foreach(_t bench_cpp bench_upb bench_protobuf_c bench_nanopb)
         target_link_options(${_t} PRIVATE ${_lto})
     endif()
 endforeach()
+
+# prost, built by cargo with the protoc above. Its Cargo.toml sets LTO;
+# target-cpu=native is the counterpart of -march=native.
+find_program(CARGO cargo)
+if(CARGO)
+    add_custom_target(bench_prost
+        COMMAND ${CMAKE_COMMAND} -E env "RUSTFLAGS=$ENV{RUSTFLAGS} -Ctarget-cpu=native" PROTOC=${PROTOC}
+                ${CARGO} build --release --locked --quiet
+                --manifest-path ${CMAKE_CURRENT_SOURCE_DIR}/prost/Cargo.toml
+                --target-dir ${CMAKE_CURRENT_BINARY_DIR}/prost
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/prost/release/bench_prost
+                ${CMAKE_CURRENT_BINARY_DIR}/bench_prost
+        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/bench_prost
+        VERBATIM)
+    list(APPEND _benches bench_prost)
+else()
+    message(STATUS "prost (cargo) not found, skipped")
+endif()
 
 add_custom_target(bench_all DEPENDS ${_benches})
