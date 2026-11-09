@@ -75,6 +75,10 @@ function(gremlinc_generate)
 
     get_property(_gen GLOBAL PROPERTY GREMLINC_GEN_COMMAND)
     get_property(_gen_depends GLOBAL PROPERTY GREMLINC_GEN_DEPENDS)
+    if(NOT _gen)
+        set(_gen $<TARGET_FILE:gremlinc-gen>)
+        set(_gen_depends gremlinc-gen)
+    endif()
     add_custom_command(
         OUTPUT  ${_generated}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${GG_OUT_DIR}

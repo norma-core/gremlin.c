@@ -42,11 +42,19 @@ set(_gremlinc_gen_cross OFF)
 if(CMAKE_CROSSCOMPILING)
     set(_gremlinc_gen_cross ON)
 elseif(APPLE AND CMAKE_OSX_ARCHITECTURES
-       AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
+       AND NOT ";${CMAKE_OSX_ARCHITECTURES};" MATCHES ";${CMAKE_HOST_SYSTEM_PROCESSOR};")
     set(_gremlinc_gen_cross ON)
+elseif(CMAKE_GENERATOR_PLATFORM)
+    # Visual Studio's -A: x64 on an AMD64 host is the only native pair it names differently.
+    string(TOUPPER "${CMAKE_GENERATOR_PLATFORM}" _platform)
+    string(TOUPPER "${CMAKE_HOST_SYSTEM_PROCESSOR}" _host)
+    if(NOT _platform STREQUAL _host AND NOT (_platform STREQUAL "X64" AND _host STREQUAL "AMD64"))
+        set(_gremlinc_gen_cross ON)
+    endif()
 endif()
 
 if(GREMLINC_GEN_EXECUTABLE)
+    set_target_properties(gremlinc-gen PROPERTIES EXCLUDE_FROM_ALL ON)
     set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND "${GREMLINC_GEN_EXECUTABLE}")
     set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS "")
 elseif(_gremlinc_gen_cross)
@@ -54,7 +62,7 @@ elseif(_gremlinc_gen_cross)
     include(ExternalProject)
     set(_host_dir ${CMAKE_CURRENT_BINARY_DIR}/host)
     set(_host_gen ${_host_dir}/bin/gremlinc-gen)
-    if(CMAKE_HOST_WIN32)
+    if(CMAKE_HOST_WIN32 OR CMAKE_HOST_SYSTEM_NAME STREQUAL "CYGWIN")
         set(_host_gen ${_host_gen}.exe)
     endif()
     set(_host_args
@@ -64,11 +72,18 @@ elseif(_gremlinc_gen_cross)
     if(CMAKE_HOST_APPLE)
         list(APPEND _host_args -DCMAKE_OSX_ARCHITECTURES=${CMAKE_HOST_SYSTEM_PROCESSOR})
     endif()
+    # The target's compiler and SDK variables unset, and no -A or toolset, so
+    # nothing of the cross toolchain reaches the host copy.
+    set(_host_env ${CMAKE_COMMAND} -E env
+        --unset=CC --unset=CXX --unset=CFLAGS --unset=CXXFLAGS --unset=CPPFLAGS
+        --unset=LDFLAGS --unset=SDKROOT --unset=ARCHFLAGS)
     ExternalProject_Add(gremlinc-gen-host
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
         BINARY_DIR ${_host_dir}
-        CMAKE_ARGS ${_host_args}
-        BUILD_COMMAND ${CMAKE_COMMAND} --build ${_host_dir} --target gremlinc-gen --config Release
+        CONFIGURE_COMMAND ${_host_env}
+            ${CMAKE_COMMAND} -G ${CMAKE_GENERATOR} ${_host_args} ${CMAKE_CURRENT_SOURCE_DIR}
+        BUILD_COMMAND ${_host_env}
+            ${CMAKE_COMMAND} --build ${_host_dir} --target gremlinc-gen --config Release
         INSTALL_COMMAND ""
         BUILD_ALWAYS ON
         BUILD_BYPRODUCTS ${_host_gen})
