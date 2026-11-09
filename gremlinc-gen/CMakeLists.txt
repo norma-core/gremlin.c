@@ -35,6 +35,50 @@ add_executable(gremlinc-gen
 )
 target_link_libraries(gremlinc-gen PRIVATE gremlinc)
 
+# gremlinc_generate() runs the generator at build time, so a cross build
+# (e.g. osx-x86_64 on an arm64 Mac) needs a second copy built for the host.
+set(GREMLINC_GEN_EXECUTABLE "" CACHE FILEPATH "Prebuilt host gremlinc-gen to use instead of building one")
+set(_gremlinc_gen_cross OFF)
+if(CMAKE_CROSSCOMPILING)
+    set(_gremlinc_gen_cross ON)
+elseif(APPLE AND CMAKE_OSX_ARCHITECTURES
+       AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
+    set(_gremlinc_gen_cross ON)
+endif()
+
+if(GREMLINC_GEN_EXECUTABLE)
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND "${GREMLINC_GEN_EXECUTABLE}")
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS "")
+elseif(_gremlinc_gen_cross)
+    set_target_properties(gremlinc-gen PROPERTIES EXCLUDE_FROM_ALL ON)
+    include(ExternalProject)
+    set(_host_dir ${CMAKE_CURRENT_BINARY_DIR}/host)
+    set(_host_gen ${_host_dir}/bin/gremlinc-gen)
+    if(CMAKE_HOST_WIN32)
+        set(_host_gen ${_host_gen}.exe)
+    endif()
+    set(_host_args
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${_host_dir}/bin
+        -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=${_host_dir}/bin)
+    if(CMAKE_HOST_APPLE)
+        list(APPEND _host_args -DCMAKE_OSX_ARCHITECTURES=${CMAKE_HOST_SYSTEM_PROCESSOR})
+    endif()
+    ExternalProject_Add(gremlinc-gen-host
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+        BINARY_DIR ${_host_dir}
+        CMAKE_ARGS ${_host_args}
+        BUILD_COMMAND ${CMAKE_COMMAND} --build ${_host_dir} --target gremlinc-gen --config Release
+        INSTALL_COMMAND ""
+        BUILD_ALWAYS ON
+        BUILD_BYPRODUCTS ${_host_gen})
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND ${_host_gen})
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS gremlinc-gen-host)
+else()
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND $<TARGET_FILE:gremlinc-gen>)
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS gremlinc-gen)
+endif()
+
 # Expose the `gremlinc_generate()` helper to anything that pulls in
 # this subdirectory.  Consumers call it to hook proto files into their
 # own build; see cmake/GremlincGenerate.cmake for the full contract.

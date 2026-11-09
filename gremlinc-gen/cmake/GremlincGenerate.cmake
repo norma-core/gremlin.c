@@ -73,14 +73,16 @@ function(gremlinc_generate)
         list(APPEND _proto_abs "${GG_IMPORTS_ROOT}/${_proto}")
     endforeach()
 
+    get_property(_gen GLOBAL PROPERTY GREMLINC_GEN_COMMAND)
+    get_property(_gen_depends GLOBAL PROPERTY GREMLINC_GEN_DEPENDS)
     add_custom_command(
         OUTPUT  ${_generated}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${GG_OUT_DIR}
-        COMMAND $<TARGET_FILE:gremlinc-gen>
+        COMMAND ${_gen}
                 -R ${GG_IMPORTS_ROOT}
                 -o ${GG_OUT_DIR}
                 ${GG_PROTOS}
-        DEPENDS gremlinc-gen ${_proto_abs}
+        DEPENDS ${_gen_depends} ${_proto_abs}
         COMMENT "gremlinc-gen: generating ${GG_TARGET} headers into ${GG_OUT_DIR}"
         VERBATIM
     )
