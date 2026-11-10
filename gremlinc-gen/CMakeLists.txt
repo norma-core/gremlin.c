@@ -37,10 +37,10 @@ target_link_libraries(gremlinc-gen PRIVATE gremlinc)
 
 # gremlinc_generate() runs the generator at build time, so a cross build
 # (e.g. osx-x86_64 on an arm64 Mac) needs a second copy built for the host.
-if(POLICY CMP0126)
-    cmake_policy(SET CMP0126 NEW)  # keep a consumer's set(GREMLINC_GEN_EXECUTABLE) on first configure
+# Only when unset: before CMake 3.21 the cache entry would drop a consumer's set().
+if(NOT DEFINED GREMLINC_GEN_EXECUTABLE)
+    set(GREMLINC_GEN_EXECUTABLE "" CACHE FILEPATH "Prebuilt host gremlinc-gen to use instead of building one")
 endif()
-set(GREMLINC_GEN_EXECUTABLE "" CACHE FILEPATH "Prebuilt host gremlinc-gen to use instead of building one")
 set(_gremlinc_gen_cross OFF)
 if(CMAKE_CROSSCOMPILING)
     set(_gremlinc_gen_cross ON)
@@ -57,6 +57,11 @@ elseif(CMAKE_GENERATOR_PLATFORM)
 endif()
 
 if(GREMLINC_GEN_EXECUTABLE)
+    # A relative or bare name would resolve to the in-tree target-arch generator.
+    if(NOT IS_ABSOLUTE "${GREMLINC_GEN_EXECUTABLE}" OR NOT EXISTS "${GREMLINC_GEN_EXECUTABLE}")
+        message(FATAL_ERROR "GREMLINC_GEN_EXECUTABLE must be an absolute path to an existing "
+                            "file, got \"${GREMLINC_GEN_EXECUTABLE}\"")
+    endif()
     set_target_properties(gremlinc-gen PROPERTIES EXCLUDE_FROM_ALL ON)
     set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND "${GREMLINC_GEN_EXECUTABLE}")
     set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS "${GREMLINC_GEN_EXECUTABLE}")
