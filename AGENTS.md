@@ -46,11 +46,6 @@ cmake --build build --target gremlinc-gen
 build/gremlinc-gen/gremlinc-gen -R protos -o gen foo.proto nested/bar.proto
 ```
 
-In a cross build (`CMAKE_CROSSCOMPILING`, `CMAKE_OSX_ARCHITECTURES` or `-A`
-other than the host's) `gremlinc_generate` builds a second copy for the host
-at `build/gremlinc-gen/host/bin/gremlinc-gen` and runs that one.
-`-DGREMLINC_GEN_EXECUTABLE=<path>` runs a prebuilt host binary instead.
-
 - `-R <dir>`: where protos and their imports are read from (default `.`).
   Each `<proto>` argument is read as `<dir>/<proto>`, and the argument as
   written is the path other files' `import "..."` must use.
@@ -64,6 +59,12 @@ at `build/gremlinc-gen/host/bin/gremlinc-gen` and runs that one.
 - The output is headers only. Compile them with `-I gen -I
   path/to/gremlin.c/runtime/include` (for `gremlin.h`); there is nothing
   to link.
+
+In a cross build (`CMAKE_CROSSCOMPILING`, `CMAKE_OSX_ARCHITECTURES` without
+the host's arch, or `-A` other than the host's) `gremlinc_generate` builds a
+second copy for the host at `build/gremlinc-gen/host/bin/gremlinc-gen` and
+runs that one. `GREMLINC_GEN_EXECUTABLE=<path>` runs a prebuilt host binary
+instead, cross or not.
 
 Headers compile as C99 with `-Wall -Wextra -Werror -pedantic`.
 

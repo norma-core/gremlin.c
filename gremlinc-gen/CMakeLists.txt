@@ -37,6 +37,9 @@ target_link_libraries(gremlinc-gen PRIVATE gremlinc)
 
 # gremlinc_generate() runs the generator at build time, so a cross build
 # (e.g. osx-x86_64 on an arm64 Mac) needs a second copy built for the host.
+if(POLICY CMP0126)
+    cmake_policy(SET CMP0126 NEW)  # keep a consumer's set(GREMLINC_GEN_EXECUTABLE) on first configure
+endif()
 set(GREMLINC_GEN_EXECUTABLE "" CACHE FILEPATH "Prebuilt host gremlinc-gen to use instead of building one")
 set(_gremlinc_gen_cross OFF)
 if(CMAKE_CROSSCOMPILING)
@@ -56,7 +59,7 @@ endif()
 if(GREMLINC_GEN_EXECUTABLE)
     set_target_properties(gremlinc-gen PROPERTIES EXCLUDE_FROM_ALL ON)
     set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND "${GREMLINC_GEN_EXECUTABLE}")
-    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS "")
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS "${GREMLINC_GEN_EXECUTABLE}")
 elseif(_gremlinc_gen_cross)
     set_target_properties(gremlinc-gen PROPERTIES EXCLUDE_FROM_ALL ON)
     include(ExternalProject)
@@ -67,6 +70,7 @@ elseif(_gremlinc_gen_cross)
     endif()
     set(_host_args
         -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
         -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${_host_dir}/bin
         -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=${_host_dir}/bin)
     if(CMAKE_HOST_APPLE)
@@ -76,7 +80,8 @@ elseif(_gremlinc_gen_cross)
     # nothing of the cross toolchain reaches the host copy.
     set(_host_env ${CMAKE_COMMAND} -E env
         --unset=CC --unset=CXX --unset=CFLAGS --unset=CXXFLAGS --unset=CPPFLAGS
-        --unset=LDFLAGS --unset=SDKROOT --unset=ARCHFLAGS)
+        --unset=LDFLAGS --unset=SDKROOT --unset=ARCHFLAGS --unset=CMAKE_TOOLCHAIN_FILE
+        --unset=CMAKE_GENERATOR_PLATFORM --unset=CMAKE_GENERATOR_TOOLSET)
     ExternalProject_Add(gremlinc-gen-host
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
         BINARY_DIR ${_host_dir}
@@ -88,7 +93,8 @@ elseif(_gremlinc_gen_cross)
         BUILD_ALWAYS ON
         BUILD_BYPRODUCTS ${_host_gen})
     set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND ${_host_gen})
-    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS gremlinc-gen-host)
+    # The file as well as the target, so a rebuilt generator regenerates the headers.
+    set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS gremlinc-gen-host ${_host_gen})
 else()
     set_property(GLOBAL PROPERTY GREMLINC_GEN_COMMAND $<TARGET_FILE:gremlinc-gen>)
     set_property(GLOBAL PROPERTY GREMLINC_GEN_DEPENDS gremlinc-gen)
