@@ -37,7 +37,8 @@ target_link_libraries(gremlinc-gen PRIVATE gremlinc)
 
 # gremlinc_generate() runs the generator at build time, so a cross build
 # (e.g. osx-x86_64 on an arm64 Mac) needs a second copy built for the host.
-# Only when unset: before CMake 3.21 the cache entry would drop a consumer's set().
+# Only when unset: under this project's policy level (CMP0126 OLD) the cache
+# entry would drop a consumer's set().
 if(NOT DEFINED GREMLINC_GEN_EXECUTABLE)
     set(GREMLINC_GEN_EXECUTABLE "" CACHE FILEPATH "Prebuilt host gremlinc-gen to use instead of building one")
 endif()
