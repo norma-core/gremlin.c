@@ -34,6 +34,12 @@ target_link_libraries(my_app PRIVATE my_protos)
   include guards and `extend` fields are resolved per run: two runs can both
   emit `Foo`, or two `dup.proto` from different roots share an include guard
   and the second header is silently skipped.
+- In a cross build (`CMAKE_CROSSCOMPILING`, `CMAKE_OSX_ARCHITECTURES`
+  without the host's arch, or `-A` other than the host's) the generator is
+  built for the host instead, at `<build>/.../gremlinc-gen/host/bin/`, and
+  the target-arch `gremlinc-gen` only with `--target gremlinc-gen`.
+  `GREMLINC_GEN_EXECUTABLE`, an absolute path, runs a prebuilt generator
+  instead, cross or not, and `gremlinc-gen` then stays out of `all` too.
 
 ### Without CMake: the `gremlinc-gen` binary
 
