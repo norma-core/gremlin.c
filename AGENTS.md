@@ -39,7 +39,7 @@ target_link_libraries(my_app PRIVATE my_protos)
   built for the host instead, at `<build>/.../gremlinc-gen/host/bin/`, and
   the target-arch `gremlinc-gen` only with `--target gremlinc-gen`.
   `GREMLINC_GEN_EXECUTABLE`, an absolute path, runs a prebuilt generator
-  instead, cross or not.
+  instead, cross or not, and `gremlinc-gen` then stays out of `all` too.
 
 ### Without CMake: the `gremlinc-gen` binary
 
